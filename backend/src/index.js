@@ -1,15 +1,33 @@
 const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const cors = require('cors');
+require('dotenv').config();
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer);
 
-const port = 3000;
+// Configuração do Socket.io com CORS
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',') 
+  : ['http://localhost:5173', 'http://localhost:3000'];
 
-// Middleware para servir arquivos estáticos
-app.use(express.static('public'));
+const io = new Server(httpServer, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
+});
+
+const port = process.env.PORT || 3000;
+
+// Middleware CORS para Express
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
+
 app.use(express.json());
 
 // Armazenamento em memória das salas
@@ -44,8 +62,13 @@ app.get('/api/rooms', (req, res) => {
   res.json(getRoomsList());
 });
 
+// Health check endpoint
 app.get('/', (req, res) => {
-  res.send('Olá, Node.js!');
+  res.json({ 
+    message: 'Spyfall Backend API',
+    status: 'running',
+    rooms: rooms.size
+  });
 });
 
 // Socket.io connection handler
