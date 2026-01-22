@@ -287,6 +287,7 @@
     // Socket events
     socket.on('room-created', (data) => {
       showStatus(createStatus, `Sala criada! Código: ${data.roomCode}`, 'success');
+      socket.emit('join-room', data.roomCode);
       currentRoom = data.roomCode;
     });
 
