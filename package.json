@@ -1,21 +1,19 @@
 {
-  "name": "spyfall",
+  "name": "spyfall-monorepo",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "description": "Spyfall game - Monorepo with Backend and Frontend",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "build:frontend": "cd frontend && npm run build"
   },
-  "keywords": [],
+  "keywords": ["spyfall", "game", "socket.io", "react"],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "express": "^5.2.1",
-    "socket.io": "^4.8.3"
-  },
   "devDependencies": {
-    "nodemon": "^3.1.11"
+    "concurrently": "^8.2.2"
   }
 }
