@@ -8,6 +8,10 @@ const io = new Server(httpServer);
 
 const port = 3000;
 
+// Middleware para servir arquivos estáticos
+app.use(express.static('public'));
+app.use(express.json());
+
 // Armazenamento em memória das salas
 // Estrutura: { roomCode: { code: string, users: [{ id: string, socketId: string }], createdAt: Date } }
 const rooms = new Map();
@@ -34,6 +38,11 @@ function getRoomsList() {
     createdAt: room.createdAt
   }));
 }
+
+// API endpoint para listar salas
+app.get('/api/rooms', (req, res) => {
+  res.json(getRoomsList());
+});
 
 app.get('/', (req, res) => {
   res.send('Olá, Node.js!');
