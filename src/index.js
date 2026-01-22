@@ -62,8 +62,78 @@ io.on('connection', (socket) => {
     io.emit('rooms-updated', getRoomsList());
   });
 
+  // Entrar em uma sala
+  socket.on('join-room', (roomCode) => {
+    const room = rooms.get(roomCode);
+    
+    if (!room) {
+      socket.emit('error', { message: 'Sala não encontrada' });
+      return;
+    }
+    
+    // Verifica se o usuário já está na sala
+    const userExists = room.users.find(u => u.socketId === socket.id);
+    if (userExists) {
+      socket.emit('error', { message: 'Você já está nesta sala' });
+      return;
+    }
+    
+    // Adiciona usuário à sala
+    const user = {
+      id: socket.id,
+      socketId: socket.id,
+      joinedAt: new Date()
+    };
+    room.users.push(user);
+    
+    // Adiciona o socket à room do Socket.io
+    socket.join(roomCode);
+    
+    console.log(`Usuário ${socket.id} entrou na sala ${roomCode}`);
+    
+    // Notifica o usuário que entrou com sucesso
+    socket.emit('joined-room', { 
+      roomCode, 
+      users: room.users 
+    });
+    
+    // Notifica todos os usuários da sala sobre o novo membro
+    io.to(roomCode).emit('user-joined', { 
+      userId: socket.id, 
+      users: room.users 
+    });
+    
+    // Atualiza lista de salas para todos
+    io.emit('rooms-updated', getRoomsList());
+  });
+
   socket.on('disconnect', () => {
     console.log(`Usuário desconectado: ${socket.id}`);
+    
+    // Remove o usuário de todas as salas
+    rooms.forEach((room, roomCode) => {
+      const userIndex = room.users.findIndex(u => u.socketId === socket.id);
+      
+      if (userIndex !== -1) {
+        room.users.splice(userIndex, 1);
+        console.log(`Usuário ${socket.id} removido da sala ${roomCode}`);
+        
+        // Se a sala ficou vazia, remove a sala
+        if (room.users.length === 0) {
+          rooms.delete(roomCode);
+          console.log(`Sala ${roomCode} removida (vazia)`);
+        } else {
+          // Notifica os usuários restantes na sala
+          io.to(roomCode).emit('user-left', { 
+            userId: socket.id, 
+            users: room.users 
+          });
+        }
+        
+        // Atualiza lista de salas para todos
+        io.emit('rooms-updated', getRoomsList());
+      }
+    });
   });
 });
 
