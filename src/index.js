@@ -43,6 +43,25 @@ app.get('/', (req, res) => {
 io.on('connection', (socket) => {
   console.log(`Usuário conectado: ${socket.id}`);
 
+  // Criar nova sala
+  socket.on('create-room', () => {
+    const roomCode = generateRoomCode();
+    const room = {
+      code: roomCode,
+      users: [],
+      createdAt: new Date()
+    };
+    rooms.set(roomCode, room);
+    
+    console.log(`Sala criada: ${roomCode}`);
+    
+    // Retorna o código da sala para o criador
+    socket.emit('room-created', { roomCode });
+    
+    // Notifica todos os clientes conectados sobre a nova sala
+    io.emit('rooms-updated', getRoomsList());
+  });
+
   socket.on('disconnect', () => {
     console.log(`Usuário desconectado: ${socket.id}`);
   });
