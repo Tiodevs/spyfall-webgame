@@ -8,10 +8,13 @@ import './App.css';
 
 function AppContent() {
   const { socket, isConnected } = useSocket();
-  const { currentRoom, joinRoom } = useRoom();
+  const { currentRoom, joinRoom, updateUsers } = useRoom();
 
-  const handleRoomJoined = (roomCode, userName) => {
+  const handleRoomJoined = (roomCode, userName, users) => {
     joinRoom(roomCode, userName);
+    if (users) {
+      updateUsers(users);
+    }
   };
 
   return (

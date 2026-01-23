@@ -33,7 +33,7 @@ export const CreateRoom = ({ socket, onRoomJoined }) => {
 
     const handleJoinedRoom = (data) => {
       if (onRoomJoined) {
-        onRoomJoined(data.roomCode, userName.trim());
+        onRoomJoined(data.roomCode, userName.trim(), data.users);
       }
     };
 
