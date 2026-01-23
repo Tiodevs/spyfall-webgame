@@ -52,14 +52,14 @@ export const GameRoom = ({ socket }) => {
   return (
     <div className="container mx-auto p-6 max-w-4xl">
       <Card>
-        <CardHeader className="text-center border-b border-border">
+        <CardHeader className="text-center border-b border-zinc-800">
           <div className="space-y-2">
-            <p className="text-sm text-muted-foreground uppercase tracking-wider">Código da Sala</p>
-            <CardTitle className="text-5xl font-bold text-primary tracking-widest">
+            <p className="text-sm text-zinc-400 uppercase tracking-wider">Código da Sala</p>
+            <CardTitle className="text-5xl font-bold text-[#01DEB2] tracking-widest">
               {currentRoom}
             </CardTitle>
-            <p className="text-muted-foreground">
-              Bem-vindo, <strong className="text-foreground">{userName}</strong>!
+            <p className="text-zinc-400">
+              Bem-vindo, <strong className="text-zinc-100">{userName}</strong>!
             </p>
           </div>
         </CardHeader>
@@ -67,7 +67,7 @@ export const GameRoom = ({ socket }) => {
         <CardContent className="p-6">
           <div className="space-y-6">
             {status && (
-              <div className="p-4 bg-primary/10 border border-primary rounded-lg text-center text-primary font-medium animate-pulse">
+              <div className="p-4 bg-[#01DEB2]/10 border border-[#01DEB2]/30 rounded-lg text-center text-[#01DEB2] font-medium animate-pulse">
                 {status}
               </div>
             )}
@@ -90,15 +90,15 @@ export const GameRoom = ({ socket }) => {
                     key={user.id} 
                     className={`p-4 rounded-lg border transition-colors ${
                       user.id === socket?.id 
-                        ? 'bg-primary/10 border-primary' 
-                        : 'bg-secondary/30 border-border hover:bg-secondary/50'
+                        ? 'bg-[#01DEB2]/10 border-[#01DEB2]/30' 
+                        : 'bg-zinc-800/50 border-zinc-700 hover:bg-zinc-800'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-lg">
+                      <span className="font-medium text-lg text-zinc-100">
                         {user.name}
                         {user.id === socket?.id && (
-                          <span className="ml-2 text-primary font-semibold">(Você)</span>
+                          <span className="ml-2 text-[#01DEB2] font-semibold">(Você)</span>
                         )}
                       </span>
                       <Badge variant={user.id === socket?.id ? "default" : "outline"}>
@@ -110,9 +110,9 @@ export const GameRoom = ({ socket }) => {
               )}
             </div>
 
-            <div className="p-5 bg-secondary/30 rounded-lg border border-border text-center">
-              <p className="text-muted-foreground">
-                🎯 Compartilhe o código <strong className="text-primary text-xl mx-1">{currentRoom}</strong> com seus amigos!
+            <div className="p-5 bg-zinc-800/50 rounded-lg border border-zinc-700 text-center">
+              <p className="text-zinc-400">
+                🎯 Compartilhe o código <strong className="text-[#01DEB2] text-xl mx-1">{currentRoom}</strong> com seus amigos!
               </p>
             </div>
 

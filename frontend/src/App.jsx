@@ -22,7 +22,7 @@ function AppContent() {
         
         {!currentRoom && (
           <div className="text-center space-y-2">
-            <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
+            <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl text-[#01DEB2]">
               Spyfall
             </h1>
             <p className="text-muted-foreground">
