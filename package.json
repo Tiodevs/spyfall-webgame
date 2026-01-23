@@ -10,10 +10,16 @@
     "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
     "build:frontend": "cd frontend && npm run build"
   },
-  "keywords": ["spyfall", "game", "socket.io", "react"],
+  "keywords": [
+    "spyfall",
+    "game",
+    "socket.io",
+    "react"
+  ],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "shadcn": "^3.7.0"
   }
 }

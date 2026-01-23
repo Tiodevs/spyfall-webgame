@@ -17,35 +17,43 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 p-4 md:p-8">
-      <div className="container mx-auto max-w-6xl">
+    <div className="min-h-screen bg-background text-foreground flex flex-col font-sans antialiased">
+      <main className="flex-1 container max-w-3xl mx-auto p-4 md:py-10 space-y-8">
+        
         {!currentRoom && (
-          <h1 className="text-4xl md:text-5xl font-bold text-center mb-8 text-white drop-shadow-lg">
-            🕵️ Spyfall
-          </h1>
+          <div className="text-center space-y-2">
+            <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
+              Spyfall
+            </h1>
+            <p className="text-muted-foreground">
+              Quem é o espião? Descubra antes que o tempo acabe.
+            </p>
+          </div>
         )}
         
         {!isConnected && (
-          <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4 text-center text-yellow-200 backdrop-blur-sm">
-            🔄 Conectando ao servidor...
-          </div>
+            <div className="rounded-md bg-yellow-500/15 p-4 border border-yellow-500/20 text-yellow-500 text-sm text-center animate-pulse">
+                Conectando ao servidor...
+            </div>
         )}
 
         {isConnected && !currentRoom && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="grid gap-6 md:grid-cols-2">
               <CreateRoom socket={socket} onRoomJoined={handleRoomJoined} />
               <JoinRoom socket={socket} onRoomJoined={handleRoomJoined} />
             </div>
 
             <RoomsList socket={socket} />
-          </>
+          </div>
         )}
 
         {isConnected && currentRoom && (
-          <GameRoom socket={socket} />
+          <div className="animate-in zoom-in-95 duration-300">
+            <GameRoom socket={socket} />
+          </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }
