@@ -212,13 +212,37 @@ io.on('connection', (socket) => {
     const locationIndex = Math.floor(Math.random() * LOCATIONS.length);
     const location = LOCATIONS[locationIndex];
     
+    // Duração da partida em milissegundos (6 minutos)
+    const GAME_DURATION = 6 * 60 * 1000;
+    const startedAt = Date.now();
+    
     // Armazena estado do jogo na sala
     room.gameState = {
       isPlaying: true,
       spyId: spyId,
       location: location,
-      startedAt: new Date()
+      startedAt: startedAt,
+      duration: GAME_DURATION
     };
+    
+    // Timer para encerrar automaticamente
+    room.gameTimer = setTimeout(() => {
+      if (room.gameState?.isPlaying) {
+        const gameState = room.gameState;
+        room.gameState = null;
+        room.gameTimer = null;
+        
+        console.log(`Partida encerrada automaticamente na sala ${roomCode} (tempo esgotado)`);
+        
+        io.to(roomCode).emit('game-ended', {
+          roomCode,
+          spyId: gameState?.spyId,
+          spyName: room.users.find(u => u.id === gameState?.spyId)?.name,
+          location: gameState?.location,
+          reason: 'timeout'
+        });
+      }
+    }, GAME_DURATION);
     
     console.log(`Partida iniciada na sala ${roomCode}. Espião: ${spyId}, Local: ${location.name}`);
     
@@ -230,7 +254,9 @@ io.on('connection', (socket) => {
         roomCode,
         isSpy,
         location: isSpy ? null : location,
-        playersCount: room.users.length
+        playersCount: room.users.length,
+        startedAt: startedAt,
+        duration: GAME_DURATION
       });
     });
   });
@@ -250,6 +276,12 @@ io.on('connection', (socket) => {
       return;
     }
     
+    // Limpa o timer se existir
+    if (room.gameTimer) {
+      clearTimeout(room.gameTimer);
+      room.gameTimer = null;
+    }
+    
     // Limpa estado do jogo
     const gameState = room.gameState;
     room.gameState = null;
@@ -261,7 +293,8 @@ io.on('connection', (socket) => {
       roomCode,
       spyId: gameState?.spyId,
       spyName: room.users.find(u => u.id === gameState?.spyId)?.name,
-      location: gameState?.location
+      location: gameState?.location,
+      reason: 'host'
     });
   });
 
@@ -278,6 +311,10 @@ io.on('connection', (socket) => {
         
         // Se a sala ficou vazia, remove a sala
         if (room.users.length === 0) {
+          // Limpa o timer se existir
+          if (room.gameTimer) {
+            clearTimeout(room.gameTimer);
+          }
           rooms.delete(roomCode);
           console.log(`Sala ${roomCode} removida (vazia)`);
         } else {

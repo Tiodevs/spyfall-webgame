@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRoom } from '../contexts/RoomContext';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Users, LogOut, Crown, Play, Eye, EyeOff, MapPin, X } from 'lucide-react';
+import { Users, LogOut, Crown, Play, Eye, EyeOff, MapPin, X, Timer } from 'lucide-react';
 
 // Lista de todos os locais possíveis
 const ALL_LOCATIONS = [
@@ -37,8 +37,45 @@ export const GameRoom = ({ socket }) => {
   const { currentRoom, userName, users, leaveRoom, updateUsers } = useRoom();
   const [status, setStatus] = useState('');
   const [isHost, setIsHost] = useState(false);
-  const [gameState, setGameState] = useState(null); // { isSpy, location, playersCount }
+  const [gameState, setGameState] = useState(null); // { isSpy, location, playersCount, startedAt, duration }
   const [crossedLocations, setCrossedLocations] = useState(new Set()); // IDs dos locais riscados
+  const [timeRemaining, setTimeRemaining] = useState(null); // Tempo restante em segundos
+  const timerIntervalRef = useRef(null);
+
+  // Timer effect - calcula tempo restante localmente baseado no timestamp do servidor
+  useEffect(() => {
+    if (gameState?.startedAt && gameState?.duration) {
+      const updateTimer = () => {
+        const elapsed = Date.now() - gameState.startedAt;
+        const remaining = Math.max(0, Math.ceil((gameState.duration - elapsed) / 1000));
+        setTimeRemaining(remaining);
+        
+        if (remaining <= 0) {
+          clearInterval(timerIntervalRef.current);
+        }
+      };
+      
+      // Atualiza imediatamente e depois a cada segundo
+      updateTimer();
+      timerIntervalRef.current = setInterval(updateTimer, 1000);
+      
+      return () => {
+        if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current);
+        }
+      };
+    } else {
+      setTimeRemaining(null);
+    }
+  }, [gameState?.startedAt, gameState?.duration]);
+
+  // Formata o tempo restante como MM:SS
+  const formatTime = (seconds) => {
+    if (seconds === null) return '--:--';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const toggleCrossLocation = (locationId) => {
     setCrossedLocations(prev => {
@@ -99,14 +136,23 @@ export const GameRoom = ({ socket }) => {
       setGameState({
         isSpy: data.isSpy,
         location: data.location,
-        playersCount: data.playersCount
+        playersCount: data.playersCount,
+        startedAt: data.startedAt,
+        duration: data.duration
       });
     };
 
     const handleGameEnded = (data) => {
+      // Limpa o timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+      setTimeRemaining(null);
       setGameState(null);
       setCrossedLocations(new Set()); // Limpa os locais riscados ao terminar
-      setStatus(`Partida encerrada! O espião era ${data.spyName}. Local: ${data.location?.name}`);
+      
+      const reasonText = data.reason === 'timeout' ? ' (tempo esgotado)' : '';
+      setStatus(`Partida encerrada${reasonText}! O espião era ${data.spyName}. Local: ${data.location?.name}`);
       setTimeout(() => setStatus(''), 8000);
     };
 
@@ -136,14 +182,30 @@ export const GameRoom = ({ socket }) => {
 
   // Tela de jogo em andamento
   if (gameState) {
+    // Determina a cor do timer baseado no tempo restante
+    const timerColor = timeRemaining !== null && timeRemaining <= 60 
+      ? 'text-red-400' 
+      : timeRemaining !== null && timeRemaining <= 120 
+        ? 'text-yellow-400' 
+        : 'text-[#01DEB2]';
+    
     return (
       <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
         <Card>
           <CardHeader className="text-center border-b border-zinc-800 p-4 sm:p-6">
             <div className="space-y-3 sm:space-y-4">
-              <Badge variant="secondary" className="text-xs sm:text-sm px-3 sm:px-4 py-1">
-                Partida em Andamento
-              </Badge>
+              {/* Timer e Badge */}
+              <div className="flex items-center justify-center gap-3">
+                <Badge variant="secondary" className="text-xs sm:text-sm px-3 sm:px-4 py-1">
+                  Partida em Andamento
+                </Badge>
+                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-800 border border-zinc-700 ${timerColor}`}>
+                  <Timer className="w-4 h-4" />
+                  <span className="font-mono font-bold text-sm sm:text-base">
+                    {formatTime(timeRemaining)}
+                  </span>
+                </div>
+              </div>
               
               {gameState.isSpy ? (
                 <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
