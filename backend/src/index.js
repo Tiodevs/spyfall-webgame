@@ -110,7 +110,10 @@ io.on('connection', (socket) => {
       code: roomCode,
       users: [],
       hostId: socket.id,
-      createdAt: new Date()
+      createdAt: new Date(),
+      scores: {}, // Placar: { odId: pontos }
+      gameState: null,
+      gameTimer: null
     };
     rooms.set(roomCode, room);
     
@@ -160,6 +163,11 @@ io.on('connection', (socket) => {
     };
     room.users.push(user);
     
+    // Inicializa pontuação do jogador se não existir
+    if (!(socket.id in room.scores)) {
+      room.scores[socket.id] = 0;
+    }
+    
     // Adiciona o socket à room do Socket.io
     socket.join(roomCode);
     
@@ -169,14 +177,16 @@ io.on('connection', (socket) => {
     socket.emit('joined-room', { 
       roomCode, 
       users: room.users,
-      hostId: room.hostId
+      hostId: room.hostId,
+      scores: room.scores
     });
     
     // Notifica todos os usuários da sala sobre o novo membro
     io.to(roomCode).emit('user-joined', { 
       userId: socket.id, 
       users: room.users,
-      hostId: room.hostId
+      hostId: room.hostId,
+      scores: room.scores
     });
     
     // Atualiza lista de salas para todos
@@ -222,24 +232,29 @@ io.on('connection', (socket) => {
       spyId: spyId,
       location: location,
       startedAt: startedAt,
-      duration: GAME_DURATION
+      duration: GAME_DURATION,
+      // Sistema de acusação
+      accusation: null, // { accuserId, accusedId, votes: { odId: bool } }
+      // Votação final (quando tempo acaba)
+      finalVoting: null, // { votes: { odId: votedForId }, isActive: bool }
+      // Resultado do jogo
+      gameEnded: false
     };
     
-    // Timer para encerrar automaticamente
+    // Timer para iniciar votação final automaticamente
     room.gameTimer = setTimeout(() => {
-      if (room.gameState?.isPlaying) {
-        const gameState = room.gameState;
-        room.gameState = null;
-        room.gameTimer = null;
+      if (room.gameState?.isPlaying && !room.gameState?.gameEnded) {
+        // Inicia votação final
+        room.gameState.finalVoting = {
+          votes: {},
+          isActive: true
+        };
         
-        console.log(`Partida encerrada automaticamente na sala ${roomCode} (tempo esgotado)`);
+        console.log(`Tempo esgotado na sala ${roomCode} - Iniciando votação final`);
         
-        io.to(roomCode).emit('game-ended', {
+        io.to(roomCode).emit('voting-started', {
           roomCode,
-          spyId: gameState?.spyId,
-          spyName: room.users.find(u => u.id === gameState?.spyId)?.name,
-          location: gameState?.location,
-          reason: 'timeout'
+          message: 'Tempo esgotado! Vote em quem você acha que é o espião.'
         });
       }
     }, GAME_DURATION);
@@ -256,7 +271,8 @@ io.on('connection', (socket) => {
         location: isSpy ? null : location,
         playersCount: room.users.length,
         startedAt: startedAt,
-        duration: GAME_DURATION
+        duration: GAME_DURATION,
+        scores: room.scores
       });
     });
   });
@@ -294,8 +310,311 @@ io.on('connection', (socket) => {
       spyId: gameState?.spyId,
       spyName: room.users.find(u => u.id === gameState?.spyId)?.name,
       location: gameState?.location,
-      reason: 'host'
+      reason: 'host',
+      scores: room.scores
     });
+  });
+
+  // ========== CHUTE DO ESPIÃO ==========
+  // O espião tenta adivinhar o local
+  socket.on('spy-guess', ({ roomCode, locationId }) => {
+    const room = rooms.get(roomCode);
+    
+    if (!room || !room.gameState?.isPlaying) {
+      socket.emit('error', { message: 'Partida não encontrada ou não está em andamento' });
+      return;
+    }
+    
+    // Verifica se é o espião
+    if (room.gameState.spyId !== socket.id) {
+      socket.emit('error', { message: 'Apenas o espião pode chutar o local' });
+      return;
+    }
+    
+    // Limpa timer
+    if (room.gameTimer) {
+      clearTimeout(room.gameTimer);
+      room.gameTimer = null;
+    }
+    
+    const guessedLocation = LOCATIONS.find(l => l.id === locationId);
+    const correctLocation = room.gameState.location;
+    const isCorrect = locationId === correctLocation.id;
+    
+    if (isCorrect) {
+      // Espião acertou: +2 pontos para o espião
+      room.scores[socket.id] = (room.scores[socket.id] || 0) + 2;
+      console.log(`Espião acertou o local na sala ${roomCode}! +2 pontos`);
+    } else {
+      // Espião errou: +1 ponto para cada agente
+      room.users.forEach(user => {
+        if (user.id !== room.gameState.spyId) {
+          room.scores[user.id] = (room.scores[user.id] || 0) + 1;
+        }
+      });
+      console.log(`Espião errou o local na sala ${roomCode}! +1 ponto para agentes`);
+    }
+    
+    const gameState = room.gameState;
+    room.gameState = null;
+    
+    io.to(roomCode).emit('game-ended', {
+      roomCode,
+      spyId: gameState.spyId,
+      spyName: room.users.find(u => u.id === gameState.spyId)?.name,
+      location: gameState.location,
+      reason: 'spy-guess',
+      spyGuessedLocation: guessedLocation,
+      spyGuessCorrect: isCorrect,
+      scores: room.scores
+    });
+  });
+
+  // ========== SISTEMA DE ACUSAÇÃO ==========
+  // Qualquer jogador pode acusar outro (exceto a si mesmo)
+  socket.on('start-accusation', ({ roomCode, accusedId }) => {
+    const room = rooms.get(roomCode);
+    
+    if (!room || !room.gameState?.isPlaying) {
+      socket.emit('error', { message: 'Partida não encontrada ou não está em andamento' });
+      return;
+    }
+    
+    // Não pode acusar a si mesmo
+    if (accusedId === socket.id) {
+      socket.emit('error', { message: 'Você não pode acusar a si mesmo' });
+      return;
+    }
+    
+    // Verifica se já há uma acusação em andamento
+    if (room.gameState.accusation) {
+      socket.emit('error', { message: 'Já existe uma acusação em andamento' });
+      return;
+    }
+    
+    // Verifica se o acusado existe na sala
+    const accused = room.users.find(u => u.id === accusedId);
+    if (!accused) {
+      socket.emit('error', { message: 'Jogador não encontrado' });
+      return;
+    }
+    
+    // Inicia acusação - todos os agentes (exceto o acusado) devem votar
+    room.gameState.accusation = {
+      accuserId: socket.id,
+      accusedId: accusedId,
+      votes: {}
+    };
+    
+    // O acusador automaticamente vota a favor
+    room.gameState.accusation.votes[socket.id] = true;
+    
+    const accuser = room.users.find(u => u.id === socket.id);
+    
+    console.log(`Acusação iniciada na sala ${roomCode}: ${accuser?.name} acusou ${accused.name}`);
+    
+    io.to(roomCode).emit('accusation-started', {
+      accuserId: socket.id,
+      accuserName: accuser?.name,
+      accusedId: accusedId,
+      accusedName: accused.name,
+      votes: room.gameState.accusation.votes
+    });
+  });
+
+  // Votar em uma acusação (apenas agentes, exceto o acusado)
+  socket.on('vote-accusation', ({ roomCode, vote }) => {
+    const room = rooms.get(roomCode);
+    
+    if (!room || !room.gameState?.isPlaying || !room.gameState?.accusation) {
+      socket.emit('error', { message: 'Não há acusação em andamento' });
+      return;
+    }
+    
+    const accusation = room.gameState.accusation;
+    
+    // Não pode votar se for o acusado
+    if (socket.id === accusation.accusedId) {
+      socket.emit('error', { message: 'O acusado não pode votar' });
+      return;
+    }
+    
+    // Espião não pode votar (só agentes votam)
+    if (socket.id === room.gameState.spyId) {
+      socket.emit('error', { message: 'O espião não pode votar na acusação' });
+      return;
+    }
+    
+    // Registra o voto
+    accusation.votes[socket.id] = vote;
+    
+    // Calcula quantos agentes precisam votar (todos exceto o acusado e o espião)
+    const agentsWhoCanVote = room.users.filter(u => 
+      u.id !== accusation.accusedId && u.id !== room.gameState.spyId
+    );
+    const totalVotesNeeded = agentsWhoCanVote.length;
+    const currentVotes = Object.keys(accusation.votes).length;
+    
+    io.to(roomCode).emit('accusation-vote-update', {
+      odId: socket.id,
+      odName: room.users.find(u => u.id === socket.id)?.name,
+      vote: vote,
+      votesCount: currentVotes,
+      votesNeeded: totalVotesNeeded
+    });
+    
+    // Verifica se todos votaram
+    if (currentVotes >= totalVotesNeeded) {
+      // Conta votos a favor
+      const votesInFavor = Object.values(accusation.votes).filter(v => v === true).length;
+      const allAgree = votesInFavor === totalVotesNeeded;
+      
+      if (allAgree) {
+        // Todos concordam - verifica se o acusado é o espião
+        const accusedIsSpy = accusation.accusedId === room.gameState.spyId;
+        
+        // Limpa timer
+        if (room.gameTimer) {
+          clearTimeout(room.gameTimer);
+          room.gameTimer = null;
+        }
+        
+        if (accusedIsSpy) {
+          // Acusação correta! Agentes ganham pontos
+          room.users.forEach(user => {
+            if (user.id !== room.gameState.spyId) {
+              // +1 ponto para todos os agentes
+              room.scores[user.id] = (room.scores[user.id] || 0) + 1;
+            }
+          });
+          // +2 pontos extras para quem fez a acusação
+          room.scores[accusation.accuserId] = (room.scores[accusation.accuserId] || 0) + 2;
+          
+          console.log(`Acusação correta na sala ${roomCode}! Espião pego.`);
+        } else {
+          // Acusação errada - espião ganha 2 pontos
+          room.scores[room.gameState.spyId] = (room.scores[room.gameState.spyId] || 0) + 2;
+          
+          console.log(`Acusação errada na sala ${roomCode}! Agente inocente acusado.`);
+        }
+        
+        const gameState = room.gameState;
+        room.gameState = null;
+        
+        io.to(roomCode).emit('game-ended', {
+          roomCode,
+          spyId: gameState.spyId,
+          spyName: room.users.find(u => u.id === gameState.spyId)?.name,
+          location: gameState.location,
+          reason: 'accusation',
+          accusedId: accusation.accusedId,
+          accusedName: room.users.find(u => u.id === accusation.accusedId)?.name,
+          accusedWasSpy: accusedIsSpy,
+          accuserId: accusation.accuserId,
+          accuserName: room.users.find(u => u.id === accusation.accuserId)?.name,
+          scores: room.scores
+        });
+      } else {
+        // Nem todos concordam - acusação falha, jogo continua
+        room.gameState.accusation = null;
+        
+        console.log(`Acusação rejeitada na sala ${roomCode}`);
+        
+        io.to(roomCode).emit('accusation-failed', {
+          votesInFavor,
+          votesNeeded: totalVotesNeeded,
+          message: 'Acusação rejeitada. O jogo continua.'
+        });
+      }
+    }
+  });
+
+  // Cancelar acusação (apenas quem iniciou pode cancelar)
+  socket.on('cancel-accusation', ({ roomCode }) => {
+    const room = rooms.get(roomCode);
+    
+    if (!room || !room.gameState?.accusation) {
+      return;
+    }
+    
+    if (room.gameState.accusation.accuserId !== socket.id) {
+      socket.emit('error', { message: 'Apenas quem fez a acusação pode cancelar' });
+      return;
+    }
+    
+    room.gameState.accusation = null;
+    
+    io.to(roomCode).emit('accusation-cancelled', {
+      message: 'Acusação cancelada'
+    });
+  });
+
+  // ========== VOTAÇÃO FINAL ==========
+  // Quando o tempo acaba, todos votam em quem acham que é o espião
+  socket.on('final-vote', ({ roomCode, votedForId }) => {
+    const room = rooms.get(roomCode);
+    
+    if (!room || !room.gameState?.finalVoting?.isActive) {
+      socket.emit('error', { message: 'Votação não está ativa' });
+      return;
+    }
+    
+    // Não pode votar em si mesmo
+    if (votedForId === socket.id) {
+      socket.emit('error', { message: 'Você não pode votar em si mesmo' });
+      return;
+    }
+    
+    // Verifica se o votado existe
+    const votedFor = room.users.find(u => u.id === votedForId);
+    if (!votedFor) {
+      socket.emit('error', { message: 'Jogador não encontrado' });
+      return;
+    }
+    
+    // Registra o voto
+    room.gameState.finalVoting.votes[socket.id] = votedForId;
+    
+    const currentVotes = Object.keys(room.gameState.finalVoting.votes).length;
+    const totalPlayers = room.users.length;
+    
+    io.to(roomCode).emit('final-vote-update', {
+      odId: socket.id,
+      odName: room.users.find(u => u.id === socket.id)?.name,
+      votesCount: currentVotes,
+      totalPlayers: totalPlayers
+    });
+    
+    // Verifica se todos votaram
+    if (currentVotes >= totalPlayers) {
+      // Calcula pontos - quem votou no espião ganha 1 ponto
+      const spyId = room.gameState.spyId;
+      const votesResult = {};
+      
+      Object.entries(room.gameState.finalVoting.votes).forEach(([odId, votedForId]) => {
+        if (votedForId === spyId) {
+          room.scores[odId] = (room.scores[odId] || 0) + 1;
+          votesResult[odId] = { votedCorrectly: true };
+        } else {
+          votesResult[odId] = { votedCorrectly: false };
+        }
+      });
+      
+      const gameState = room.gameState;
+      room.gameState = null;
+      
+      console.log(`Votação final concluída na sala ${roomCode}`);
+      
+      io.to(roomCode).emit('game-ended', {
+        roomCode,
+        spyId: gameState.spyId,
+        spyName: room.users.find(u => u.id === gameState.spyId)?.name,
+        location: gameState.location,
+        reason: 'final-vote',
+        votesResult: votesResult,
+        scores: room.scores
+      });
+    }
   });
 
   socket.on('disconnect', () => {
@@ -322,7 +641,8 @@ io.on('connection', (socket) => {
           io.to(roomCode).emit('user-left', { 
             userId: socket.id, 
             users: room.users,
-            hostId: room.hostId
+            hostId: room.hostId,
+            scores: room.scores
           });
         }
         
