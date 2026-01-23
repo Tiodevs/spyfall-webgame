@@ -3,7 +3,7 @@ import { useRoom } from '../contexts/RoomContext';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Users, Share2, LogOut } from 'lucide-react';
+import { Users, Share2, LogOut, Crown } from 'lucide-react';
 
 export const GameRoom = ({ socket }) => {
   const { currentRoom, userName, users, leaveRoom, updateUsers } = useRoom();
@@ -99,15 +99,19 @@ export const GameRoom = ({ socket }) => {
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-lg text-zinc-100">
+                      <span className="font-medium text-lg text-zinc-100 flex items-center gap-2">
                         {user.name}
+                        
                         {user.id === socket?.id && (
-                          <span className="ml-2 text-[#01DEB2] font-semibold">(Você)</span>
+                          <span className="text-[#01DEB2] font-semibold">(Você)</span>
                         )}
                       </span>
-                      <Badge variant={user.id === socket?.id ? "default" : "outline"}>
-                        #{index + 1}
-                      </Badge>
+                      {user.isHost && (
+                          <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+                            <Crown className="w-3 h-3 mr-1" />
+                            Host
+                          </Badge>
+                        )}
                     </div>
                   </div>
                 ))

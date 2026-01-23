@@ -81,14 +81,15 @@ io.on('connection', (socket) => {
     const room = {
       code: roomCode,
       users: [],
+      hostId: socket.id,
       createdAt: new Date()
     };
     rooms.set(roomCode, room);
     
-    console.log(`Sala criada: ${roomCode}`);
+    console.log(`Sala criada: ${roomCode} (host: ${socket.id})`);
     
     // Retorna o código da sala para o criador
-    socket.emit('room-created', { roomCode });
+    socket.emit('room-created', { roomCode, hostId: socket.id });
     
     // Notifica todos os clientes conectados sobre a nova sala
     io.emit('rooms-updated', getRoomsList());
@@ -126,6 +127,7 @@ io.on('connection', (socket) => {
       id: socket.id,
       socketId: socket.id,
       name: userName.trim(),
+      isHost: room.hostId === socket.id,
       joinedAt: new Date()
     };
     room.users.push(user);
@@ -138,13 +140,15 @@ io.on('connection', (socket) => {
     // Notifica o usuário que entrou com sucesso
     socket.emit('joined-room', { 
       roomCode, 
-      users: room.users 
+      users: room.users,
+      hostId: room.hostId
     });
     
     // Notifica todos os usuários da sala sobre o novo membro
     io.to(roomCode).emit('user-joined', { 
       userId: socket.id, 
-      users: room.users 
+      users: room.users,
+      hostId: room.hostId
     });
     
     // Atualiza lista de salas para todos
@@ -170,7 +174,8 @@ io.on('connection', (socket) => {
           // Notifica os usuários restantes na sala
           io.to(roomCode).emit('user-left', { 
             userId: socket.id, 
-            users: room.users 
+            users: room.users,
+            hostId: room.hostId
           });
         }
         
