@@ -44,7 +44,7 @@ function AppContent() {
               <JoinRoom socket={socket} onRoomJoined={handleRoomJoined} />
             </div>
 
-            <RoomsList socket={socket} />
+            <RoomsList socket={socket} onRoomJoined={handleRoomJoined} />
           </div>
         )}
 
