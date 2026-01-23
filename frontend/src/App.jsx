@@ -1,7 +1,6 @@
 import { useSocket } from './hooks/useSocket';
 import { RoomProvider, useRoom } from './contexts/RoomContext';
 import { CreateRoom } from './components/CreateRoom';
-import { JoinRoom } from './components/JoinRoom';
 import { RoomsList } from './components/RoomsList';
 import { GameRoom } from './components/GameRoom';
 
@@ -39,11 +38,7 @@ function AppContent() {
 
         {isConnected && !currentRoom && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="grid gap-6 md:grid-cols-2">
-              <CreateRoom socket={socket} onRoomJoined={handleRoomJoined} />
-              <JoinRoom socket={socket} onRoomJoined={handleRoomJoined} />
-            </div>
-
+            <CreateRoom socket={socket} onRoomJoined={handleRoomJoined} />
             <RoomsList socket={socket} onRoomJoined={handleRoomJoined} />
           </div>
         )}
