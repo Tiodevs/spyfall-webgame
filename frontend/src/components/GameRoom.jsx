@@ -311,6 +311,157 @@ export const GameRoom = ({ socket }) => {
 
   if (!currentRoom) return null;
 
+  // ========== TELA DE VOTAÇÃO FINAL ==========
+  if (finalVoting?.isActive && gameState) {
+    return (
+      <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
+        <Card>
+          <CardHeader className="text-center border-b border-zinc-800 p-4 sm:p-6">
+            <div className="space-y-3">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-yellow-500/20 rounded-full flex items-center justify-center">
+                <Vote className="w-8 h-8 sm:w-10 sm:h-10 text-yellow-400" />
+              </div>
+              <CardTitle className="text-2xl sm:text-3xl font-bold text-yellow-400">
+                Votação Final!
+              </CardTitle>
+              <p className="text-sm sm:text-base text-zinc-400">
+                O tempo acabou! Vote em quem você acha que é o espião.
+              </p>
+              <Badge variant="secondary" className="text-xs sm:text-sm">
+                {finalVoting.votesCount || 0} / {finalVoting.totalPlayers || users.length} votos
+              </Badge>
+            </div>
+          </CardHeader>
+          
+          <CardContent className="p-4 sm:p-6">
+            <div className="space-y-4">
+              {myVote ? (
+                <div className="text-center p-4 bg-[#01DEB2]/10 border border-[#01DEB2]/30 rounded-lg">
+                  <p className="text-[#01DEB2] font-medium">
+                    Você votou em {users.find(u => u.id === myVote)?.name}
+                  </p>
+                  <p className="text-sm text-zinc-400 mt-1">Aguardando outros jogadores...</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-center text-zinc-400 text-sm">Selecione um jogador para votar:</p>
+                  <div className="grid gap-2">
+                    {users.filter(u => u.id !== socket?.id).map((user) => (
+                      <Button
+                        key={user.id}
+                        variant="outline"
+                        onClick={() => handleFinalVote(user.id)}
+                        className="w-full justify-start text-left py-4"
+                      >
+                        <Target className="w-4 h-4 mr-2 text-yellow-400" />
+                        {user.name}
+                      </Button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // ========== TELA DE ACUSAÇÃO EM ANDAMENTO ==========
+  if (accusation && gameState) {
+    const isAccuser = accusation.accuserId === socket?.id;
+    const isAccused = accusation.accusedId === socket?.id;
+    const isSpy = gameState.isSpy;
+    const canVote = !isAccused && !isSpy && !accusation.votes?.[socket?.id];
+    const hasVoted = accusation.votes?.[socket?.id] !== undefined;
+    
+    return (
+      <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
+        <Card>
+          <CardHeader className="text-center border-b border-zinc-800 p-4 sm:p-6">
+            <div className="space-y-3">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-orange-500/20 rounded-full flex items-center justify-center">
+                <AlertTriangle className="w-8 h-8 sm:w-10 sm:h-10 text-orange-400" />
+              </div>
+              <CardTitle className="text-xl sm:text-2xl font-bold text-orange-400">
+                Acusação em Andamento
+              </CardTitle>
+              <p className="text-sm sm:text-base text-zinc-300">
+                <strong className="text-orange-400">{accusation.accuserName}</strong> acusou{' '}
+                <strong className="text-red-400">{accusation.accusedName}</strong> de ser o espião!
+              </p>
+              {accusation.votesCount !== undefined && (
+                <Badge variant="secondary" className="text-xs sm:text-sm">
+                  {accusation.votesCount} / {accusation.votesNeeded} votos necessários
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          
+          <CardContent className="p-4 sm:p-6">
+            <div className="space-y-4">
+              {isAccused && (
+                <div className="text-center p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <p className="text-red-400 font-medium">Você foi acusado!</p>
+                  <p className="text-sm text-zinc-400 mt-1">Aguarde a votação dos outros jogadores.</p>
+                </div>
+              )}
+              
+              {isSpy && !isAccused && (
+                <div className="text-center p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg">
+                  <p className="text-zinc-400">Aguardando votação dos agentes...</p>
+                </div>
+              )}
+              
+              {hasVoted && !isAccused && !isSpy && (
+                <div className="text-center p-4 bg-[#01DEB2]/10 border border-[#01DEB2]/30 rounded-lg">
+                  <p className="text-[#01DEB2] font-medium">Você já votou!</p>
+                  <p className="text-sm text-zinc-400 mt-1">Aguardando outros jogadores...</p>
+                </div>
+              )}
+              
+              {canVote && (
+                <div className="space-y-3">
+                  <p className="text-center text-zinc-400 text-sm">
+                    Você concorda que {accusation.accusedName} é o espião?
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button
+                      onClick={() => handleVoteAccusation(true)}
+                      className="py-4 bg-green-600 hover:bg-green-700"
+                    >
+                      <ThumbsUp className="w-4 h-4 mr-2" />
+                      Concordo
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => handleVoteAccusation(false)}
+                      className="py-4"
+                    >
+                      <ThumbsDown className="w-4 h-4 mr-2" />
+                      Discordo
+                    </Button>
+                  </div>
+                </div>
+              )}
+              
+              {isAccuser && (
+                <Button
+                  variant="outline"
+                  onClick={handleCancelAccusation}
+                  className="w-full"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Cancelar Acusação
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // Tela de jogo em andamento
   if (gameState) {
     // Determina a cor do timer baseado no tempo restante
@@ -377,34 +528,68 @@ export const GameRoom = ({ socket }) => {
           
           <CardContent className="p-4 sm:p-6">
             <div className="space-y-4 sm:space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2">
-                  <Users className="w-4 h-4 sm:w-5 sm:h-5" />
-                  Jogadores
-                </h3>
-                <Badge variant="secondary" className="text-xs sm:text-sm">
-                  {gameState.playersCount} jogadores
-                </Badge>
-              </div>
+              {/* Status */}
+              {status && (
+                <div className="p-3 rounded-lg text-center text-sm font-medium bg-[#01DEB2]/10 border border-[#01DEB2]/30 text-[#01DEB2]">
+                  {status}
+                </div>
+              )}
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {users.map((user) => (
-                  <div 
-                    key={user.id} 
-                    className={`p-2 sm:p-3 rounded-lg border text-center ${
-                      user.id === socket?.id 
-                        ? 'bg-[#01DEB2]/10 border-[#01DEB2]/30' 
-                        : 'bg-zinc-800/50 border-zinc-700'
-                    }`}
-                  >
-                    <span className="font-medium text-sm sm:text-base text-zinc-100 break-words">
-                      {user.name}
-                      {user.id === socket?.id && (
-                        <span className="text-[#01DEB2] text-xs sm:text-sm ml-1">(Você)</span>
-                      )}
-                    </span>
-                  </div>
-                ))}
+              {/* Jogadores com opção de acusar */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2">
+                    <Users className="w-4 h-4 sm:w-5 sm:h-5" />
+                    Jogadores
+                  </h3>
+                  <Badge variant="secondary" className="text-xs sm:text-sm">
+                    {gameState.playersCount} jogadores
+                  </Badge>
+                </div>
+                
+                <div className="space-y-2">
+                  {users.map((user) => {
+                    const isMe = user.id === socket?.id;
+                    const canAccuse = !gameState.isSpy && !isMe; // Apenas agentes podem acusar, não a si mesmos
+                    
+                    return (
+                      <div 
+                        key={user.id} 
+                        className={`p-3 sm:p-4 rounded-lg border flex items-center justify-between ${
+                          isMe 
+                            ? 'bg-[#01DEB2]/10 border-[#01DEB2]/30' 
+                            : 'bg-zinc-800/50 border-zinc-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm sm:text-base text-zinc-100">
+                            {user.name}
+                          </span>
+                          {isMe && (
+                            <span className="text-[#01DEB2] text-xs">(Você)</span>
+                          )}
+                          {/* Mostrar pontuação */}
+                          <Badge variant="outline" className="text-xs ml-1">
+                            <Trophy className="w-3 h-3 mr-1" />
+                            {scores[user.id] || 0}
+                          </Badge>
+                        </div>
+                        
+                        {canAccuse && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleStartAccusation(user.id)}
+                            className="text-orange-400 border-orange-400/50 hover:bg-orange-400/10"
+                          >
+                            <AlertTriangle className="w-3 h-3 mr-1" />
+                            Acusar
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Lista de Locais Possíveis */}
@@ -412,15 +597,45 @@ export const GameRoom = ({ socket }) => {
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2">
                     <MapPin className="w-4 h-4 sm:w-5 sm:h-5" />
-                    Locais Possíveis
+                    {gameState.isSpy ? 'Chutar Local' : 'Locais Possíveis'}
                   </h3>
                   <span className="text-xs sm:text-sm text-zinc-400">
-                    Toque para riscar
+                    {gameState.isSpy ? 'Escolha para chutar' : 'Toque para riscar'}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                   {ALL_LOCATIONS.map((location) => {
                     const isCrossed = crossedLocations.has(location.id);
+                    
+                    // Se for espião, mostra botões de chutar
+                    if (gameState.isSpy) {
+                      return (
+                        <button
+                          key={location.id}
+                          onClick={() => {
+                            if (confirm(`Você tem certeza que quer chutar "${location.name}"? Se errar, os agentes ganham pontos!`)) {
+                              handleSpyGuess(location.id);
+                            }
+                          }}
+                          className={`p-2 sm:p-3 rounded-lg border text-left transition-all ${
+                            isCrossed
+                              ? 'bg-zinc-800/30 border-zinc-700/50 opacity-50'
+                              : 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20 active:scale-95'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg sm:text-xl">{location.icon}</span>
+                            <span className={`text-xs sm:text-sm font-medium ${
+                              isCrossed ? 'line-through text-zinc-500' : 'text-zinc-100'
+                            }`}>
+                              {location.name}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    }
+                    
+                    // Se for agente, mostra lista para riscar
                     return (
                       <button
                         key={location.id}
@@ -532,17 +747,55 @@ export const GameRoom = ({ socket }) => {
                           <span className="text-[#01DEB2] font-semibold text-sm">(Você)</span>
                         )}
                       </span>
-                      {user.isHost && (
-                        <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 shrink-0 text-xs sm:text-sm">
-                          <Crown className="w-3 h-3 mr-1" />
-                          Host
-                        </Badge>
-                      )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {scores[user.id] > 0 && (
+                          <Badge variant="secondary" className="text-xs sm:text-sm">
+                            <Trophy className="w-3 h-3 mr-1 text-yellow-400" />
+                            {scores[user.id]}
+                          </Badge>
+                        )}
+                        {user.isHost && (
+                          <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs sm:text-sm">
+                            <Crown className="w-3 h-3 mr-1" />
+                            Host
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))
               )}
             </div>
+
+            {/* Placar - mostra se houver pontuações */}
+            {Object.values(scores).some(s => s > 0) && (
+              <div className="p-3 sm:p-4 bg-zinc-800/50 rounded-lg border border-zinc-700">
+                <h4 className="text-sm font-semibold flex items-center gap-2 mb-2 text-yellow-400">
+                  <Trophy className="w-4 h-4" />
+                  Placar
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {users
+                    .filter(u => scores[u.id] > 0)
+                    .sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0))
+                    .map((user, index) => (
+                      <Badge 
+                        key={user.id}
+                        variant={index === 0 ? "default" : "secondary"}
+                        className={`text-xs sm:text-sm ${
+                          index === 0 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : ''
+                        }`}
+                      >
+                        {index === 0 && '🥇 '}
+                        {index === 1 && '🥈 '}
+                        {index === 2 && '🥉 '}
+                        {user.name}: {scores[user.id]}
+                      </Badge>
+                    ))
+                  }
+                </div>
+              </div>
+            )}
 
             {users.length < 3 && (
               <div className="p-3 sm:p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 text-center">
