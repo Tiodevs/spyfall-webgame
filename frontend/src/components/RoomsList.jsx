@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { Badge } from './ui/badge';
 
 export const RoomsList = ({ socket }) => {
   const [rooms, setRooms] = useState([]);
@@ -31,27 +33,39 @@ export const RoomsList = ({ socket }) => {
   }, [socket]);
 
   return (
-    <div className="card">
-      <h2>📋 Salas Disponíveis</h2>
-      <ul className="list">
+    <Card className="backdrop-blur-sm bg-card/50">
+      <CardHeader>
+        <CardTitle className="text-2xl">📋 Salas Disponíveis</CardTitle>
+      </CardHeader>
+      <CardContent>
         {rooms.length === 0 ? (
-          <li className="empty-state">Nenhuma sala disponível. Crie uma nova sala!</li>
+          <p className="text-center text-muted-foreground py-8 italic">
+            Nenhuma sala disponível. Crie uma nova sala!
+          </p>
         ) : (
-          rooms.map((room) => (
-            <li key={room.code} className="list-item">
-              <div>
-                <strong>{room.code}</strong>
-                <small style={{ color: '#999', marginLeft: '10px' }}>
-                  {new Date(room.createdAt).toLocaleTimeString('pt-BR')}
-                </small>
+          <div className="space-y-2">
+            {rooms.map((room) => (
+              <div 
+                key={room.code} 
+                className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border hover:bg-secondary/70 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg font-bold text-primary">{room.code}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {new Date(room.createdAt).toLocaleTimeString('pt-BR', { 
+                      hour: '2-digit', 
+                      minute: '2-digit' 
+                    })}
+                  </span>
+                </div>
+                <Badge variant="secondary">
+                  {room.userCount} jogador{room.userCount !== 1 ? 'es' : ''}
+                </Badge>
               </div>
-              <span className="badge">
-                {room.userCount} usuário{room.userCount !== 1 ? 's' : ''}
-              </span>
-            </li>
-          ))
+            ))}
+          </div>
         )}
-      </ul>
-    </div>
+      </CardContent>
+    </Card>
   );
 };
