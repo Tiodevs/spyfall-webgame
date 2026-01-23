@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { Plus } from 'lucide-react';
 
 export const CreateRoom = ({ socket, onRoomJoined }) => {
   const [userName, setUserName] = useState('');
@@ -72,7 +73,8 @@ export const CreateRoom = ({ socket, onRoomJoined }) => {
           disabled={!socket || !userName.trim()}
           className="w-full"
         >
-          🎮 Criar Sala
+          <Plus className="w-4 h-4 mr-2" />
+          Criar Sala
         </Button>
         {status && (
           <div className={`text-sm text-center p-3 rounded-md ${

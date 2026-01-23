@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
+import { List } from 'lucide-react';
 
 export const RoomsList = ({ socket }) => {
   const [rooms, setRooms] = useState([]);
@@ -35,7 +36,10 @@ export const RoomsList = ({ socket }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">📋 Salas Disponíveis</CardTitle>
+        <CardTitle className="text-2xl flex items-center gap-2">
+          <List className="w-6 h-6" />
+          Salas Disponíveis
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {rooms.length === 0 ? (

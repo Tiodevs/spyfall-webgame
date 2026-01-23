@@ -3,6 +3,7 @@ import { useRoom } from '../contexts/RoomContext';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
+import { Users, Share2, LogOut } from 'lucide-react';
 
 export const GameRoom = ({ socket }) => {
   const { currentRoom, userName, users, leaveRoom, updateUsers } = useRoom();
@@ -73,7 +74,10 @@ export const GameRoom = ({ socket }) => {
             )}
 
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-semibold">👥 Jogadores na Sala</h3>
+              <h3 className="text-xl font-semibold flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                Jogadores na Sala
+              </h3>
               <Badge variant="secondary" className="text-base px-3 py-1">
                 {users.length} jogador{users.length !== 1 ? 'es' : ''}
               </Badge>
@@ -110,18 +114,13 @@ export const GameRoom = ({ socket }) => {
               )}
             </div>
 
-            <div className="p-5 bg-zinc-800/50 rounded-lg border border-zinc-700 text-center">
-              <p className="text-zinc-400">
-                🎯 Compartilhe o código <strong className="text-[#01DEB2] text-xl mx-1">{currentRoom}</strong> com seus amigos!
-              </p>
-            </div>
-
             <Button 
               variant="destructive" 
               onClick={handleLeaveRoom}
               className="w-full text-base py-6"
             >
-              🚪 Sair da Sala
+              <LogOut className="w-5 h-5 mr-2" />
+              Sair da Sala
             </Button>
           </div>
         </CardContent>

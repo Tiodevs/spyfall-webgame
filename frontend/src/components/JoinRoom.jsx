@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { LogIn } from 'lucide-react';
 
 export const JoinRoom = ({ socket, onRoomJoined }) => {
   const [roomCode, setRoomCode] = useState('');
@@ -98,7 +99,8 @@ export const JoinRoom = ({ socket, onRoomJoined }) => {
           disabled={!socket || !roomCode.trim() || !userName.trim()}
           className="w-full"
         >
-          🚪 Entrar na Sala
+          <LogIn className="w-4 h-4 mr-2" />
+          Entrar na Sala
         </Button>
         {status && (
           <div className={`text-sm text-center p-3 rounded-md ${
