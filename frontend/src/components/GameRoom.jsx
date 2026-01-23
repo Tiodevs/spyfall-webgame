@@ -3,13 +3,54 @@ import { useRoom } from '../contexts/RoomContext';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Users, LogOut, Crown, Play, Eye, EyeOff, MapPin } from 'lucide-react';
+import { Users, LogOut, Crown, Play, Eye, EyeOff, MapPin, X } from 'lucide-react';
+
+// Lista de todos os locais possíveis
+const ALL_LOCATIONS = [
+  { id: 1, name: 'Aeroporto', icon: '✈️' },
+  { id: 2, name: 'Banco', icon: '🏦' },
+  { id: 3, name: 'Praia', icon: '🏖️' },
+  { id: 4, name: 'Cassino', icon: '🎰' },
+  { id: 5, name: 'Circo', icon: '🎪' },
+  { id: 6, name: 'Hospital', icon: '🏥' },
+  { id: 7, name: 'Hotel', icon: '🏨' },
+  { id: 8, name: 'Escola', icon: '🏫' },
+  { id: 9, name: 'Restaurante', icon: '🍽️' },
+  { id: 10, name: 'Supermercado', icon: '🛒' },
+  { id: 11, name: 'Teatro', icon: '🎭' },
+  { id: 12, name: 'Museu', icon: '🏛️' },
+  { id: 13, name: 'Estádio de Futebol', icon: '⚽' },
+  { id: 14, name: 'Delegacia', icon: '🚔' },
+  { id: 15, name: 'Navio Cruzeiro', icon: '🚢' },
+  { id: 16, name: 'Spa', icon: '💆' },
+  { id: 17, name: 'Estação Espacial', icon: '🚀' },
+  { id: 18, name: 'Submarino', icon: '🛥️' },
+  { id: 19, name: 'Base Militar', icon: '🎖️' },
+  { id: 20, name: 'Igreja', icon: '⛪' },
+  { id: 21, name: 'Universidade', icon: '🎓' },
+  { id: 22, name: 'Fazenda', icon: '🌾' },
+  { id: 23, name: 'Estúdio de TV', icon: '📺' },
+  { id: 24, name: 'Parque de Diversões', icon: '🎡' },
+];
 
 export const GameRoom = ({ socket }) => {
   const { currentRoom, userName, users, leaveRoom, updateUsers } = useRoom();
   const [status, setStatus] = useState('');
   const [isHost, setIsHost] = useState(false);
   const [gameState, setGameState] = useState(null); // { isSpy, location, playersCount }
+  const [crossedLocations, setCrossedLocations] = useState(new Set()); // IDs dos locais riscados
+
+  const toggleCrossLocation = (locationId) => {
+    setCrossedLocations(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(locationId)) {
+        newSet.delete(locationId);
+      } else {
+        newSet.add(locationId);
+      }
+      return newSet;
+    });
+  };
 
   const handleLeaveRoom = () => {
     if (socket) {
@@ -54,6 +95,7 @@ export const GameRoom = ({ socket }) => {
     };
 
     const handleGameStarted = (data) => {
+      setCrossedLocations(new Set()); // Limpa os locais riscados ao iniciar nova partida
       setGameState({
         isSpy: data.isSpy,
         location: data.location,
@@ -63,6 +105,7 @@ export const GameRoom = ({ socket }) => {
 
     const handleGameEnded = (data) => {
       setGameState(null);
+      setCrossedLocations(new Set()); // Limpa os locais riscados ao terminar
       setStatus(`Partida encerrada! O espião era ${data.spyName}. Local: ${data.location?.name}`);
       setTimeout(() => setStatus(''), 8000);
     };
@@ -169,6 +212,53 @@ export const GameRoom = ({ socket }) => {
                     </span>
                   </div>
                 ))}
+              </div>
+
+              {/* Lista de Locais Possíveis */}
+              <div className="border-t border-zinc-800 pt-4 sm:pt-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2">
+                    <MapPin className="w-4 h-4 sm:w-5 sm:h-5" />
+                    Locais Possíveis
+                  </h3>
+                  <span className="text-xs sm:text-sm text-zinc-400">
+                    Toque para riscar
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                  {ALL_LOCATIONS.map((location) => {
+                    const isCrossed = crossedLocations.has(location.id);
+                    return (
+                      <button
+                        key={location.id}
+                        onClick={() => toggleCrossLocation(location.id)}
+                        className={`p-2 sm:p-3 rounded-lg border text-left transition-all ${
+                          isCrossed
+                            ? 'bg-zinc-800/30 border-zinc-700/50 opacity-50'
+                            : 'bg-zinc-800/50 border-zinc-700 hover:bg-zinc-700/50 active:scale-95'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg sm:text-xl">{location.icon}</span>
+                          <span className={`text-xs sm:text-sm font-medium text-zinc-100 ${
+                            isCrossed ? 'line-through text-zinc-500' : ''
+                          }`}>
+                            {location.name}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {crossedLocations.size > 0 && (
+                  <button
+                    onClick={() => setCrossedLocations(new Set())}
+                    className="mt-3 text-xs sm:text-sm text-zinc-400 hover:text-zinc-200 flex items-center gap-1 mx-auto"
+                  >
+                    <X className="w-3 h-3" />
+                    Limpar todos ({crossedLocations.size} riscados)
+                  </button>
+                )}
               </div>
 
               {isHost && (
