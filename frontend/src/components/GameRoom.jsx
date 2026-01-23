@@ -16,6 +16,11 @@ export const GameRoom = ({ socket }) => {
   useEffect(() => {
     if (!socket || !currentRoom) return;
 
+    const handleJoinedRoom = (data) => {
+      // Atualiza lista de usuários quando entra na sala
+      updateUsers(data.users);
+    };
+
     const handleUserJoined = (data) => {
       setStatus(`Novo usuário entrou na sala!`);
       updateUsers(data.users);
@@ -28,10 +33,12 @@ export const GameRoom = ({ socket }) => {
       setTimeout(() => setStatus(''), 3000);
     };
 
+    socket.on('joined-room', handleJoinedRoom);
     socket.on('user-joined', handleUserJoined);
     socket.on('user-left', handleUserLeft);
 
     return () => {
+      socket.off('joined-room', handleJoinedRoom);
       socket.off('user-joined', handleUserJoined);
       socket.off('user-left', handleUserLeft);
     };
