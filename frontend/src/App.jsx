@@ -4,7 +4,6 @@ import { CreateRoom } from './components/CreateRoom';
 import { JoinRoom } from './components/JoinRoom';
 import { RoomsList } from './components/RoomsList';
 import { GameRoom } from './components/GameRoom';
-import './App.css';
 
 function AppContent() {
   const { socket, isConnected } = useSocket();
@@ -18,29 +17,35 @@ function AppContent() {
   };
 
   return (
-    <div className="container">
-      {!currentRoom && <h1>🕵️ Spyfall - Sistema de Salas</h1>}
-      
-      {!isConnected && (
-        <div className="card" style={{ textAlign: 'center', background: '#fff3cd', border: '1px solid #ffc107' }}>
-          <p style={{ margin: 0, color: '#856404' }}>🔄 Conectando ao servidor...</p>
-        </div>
-      )}
-
-      {isConnected && !currentRoom && (
-        <>
-          <div className="main-grid">
-            <CreateRoom socket={socket} onRoomJoined={handleRoomJoined} />
-            <JoinRoom socket={socket} onRoomJoined={handleRoomJoined} />
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 p-4 md:p-8">
+      <div className="container mx-auto max-w-6xl">
+        {!currentRoom && (
+          <h1 className="text-4xl md:text-5xl font-bold text-center mb-8 text-white drop-shadow-lg">
+            🕵️ Spyfall
+          </h1>
+        )}
+        
+        {!isConnected && (
+          <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4 text-center text-yellow-200 backdrop-blur-sm">
+            🔄 Conectando ao servidor...
           </div>
+        )}
 
-          <RoomsList socket={socket} />
-        </>
-      )}
+        {isConnected && !currentRoom && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <CreateRoom socket={socket} onRoomJoined={handleRoomJoined} />
+              <JoinRoom socket={socket} onRoomJoined={handleRoomJoined} />
+            </div>
 
-      {isConnected && currentRoom && (
-        <GameRoom socket={socket} />
-      )}
+            <RoomsList socket={socket} />
+          </>
+        )}
+
+        {isConnected && currentRoom && (
+          <GameRoom socket={socket} />
+        )}
+      </div>
     </div>
   );
 }
