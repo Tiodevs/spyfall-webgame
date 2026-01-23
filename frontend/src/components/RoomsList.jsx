@@ -33,7 +33,7 @@ export const RoomsList = ({ socket }) => {
   }, [socket]);
 
   return (
-    <Card className="backdrop-blur-sm bg-card/50">
+    <Card>
       <CardHeader>
         <CardTitle className="text-2xl">📋 Salas Disponíveis</CardTitle>
       </CardHeader>

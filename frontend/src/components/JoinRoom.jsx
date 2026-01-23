@@ -63,7 +63,7 @@ export const JoinRoom = ({ socket, onRoomJoined }) => {
   }, [socket, userName, onRoomJoined]);
 
   return (
-    <Card className="backdrop-blur-sm bg-card/50">
+    <Card>
       <CardHeader>
         <CardTitle className="text-2xl">Entrar em Sala</CardTitle>
       </CardHeader>

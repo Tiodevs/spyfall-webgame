@@ -51,7 +51,7 @@ export const CreateRoom = ({ socket, onRoomJoined }) => {
   }, [socket, userName, onRoomJoined]);
 
   return (
-    <Card className="backdrop-blur-sm bg-card/50">
+    <Card>
       <CardHeader>
         <CardTitle className="text-2xl">Criar Nova Sala</CardTitle>
       </CardHeader>

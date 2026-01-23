@@ -51,7 +51,7 @@ export const GameRoom = ({ socket }) => {
 
   return (
     <div className="container mx-auto p-6 max-w-4xl">
-      <Card className="backdrop-blur-sm bg-card/50">
+      <Card>
         <CardHeader className="text-center border-b border-border">
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground uppercase tracking-wider">Código da Sala</p>
