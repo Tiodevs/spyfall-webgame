@@ -1,4 +1,8 @@
 import { useState, useEffect } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
 
 export const JoinRoom = ({ socket, onRoomJoined }) => {
   const [roomCode, setRoomCode] = useState('');
@@ -59,42 +63,53 @@ export const JoinRoom = ({ socket, onRoomJoined }) => {
   }, [socket, userName, onRoomJoined]);
 
   return (
-    <div className="card">
-      <h2>Entrar em Sala</h2>
-      <div className="input-group">
-        <label htmlFor="joinUserName">Seu Nome:</label>
-        <input
-          type="text"
-          id="joinUserName"
-          placeholder="Digite seu nome"
-          maxLength="20"
-          value={userName}
-          onChange={(e) => setUserName(e.target.value)}
-          onKeyPress={handleKeyPress}
-          disabled={!socket}
-        />
-      </div>
-      <div className="input-group">
-        <label htmlFor="roomCodeInput">Código da Sala:</label>
-        <input
-          type="text"
-          id="roomCodeInput"
-          placeholder="Ex: ABCD"
-          maxLength="4"
-          value={roomCode}
-          onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-          onKeyPress={handleKeyPress}
-          disabled={!socket}
-        />
-      </div>
-      <button onClick={handleJoinRoom} disabled={!socket || !roomCode.trim() || !userName.trim()}>
-        🚪 Entrar na Sala
-      </button>
-      {status && (
-        <div className={`status ${status.includes('entrou') ? 'success' : 'error'}`}>
-          {status}
+    <Card className="backdrop-blur-sm bg-card/50">
+      <CardHeader>
+        <CardTitle className="text-2xl">Entrar em Sala</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="joinUserName">Seu Nome</Label>
+          <Input
+            id="joinUserName"
+            placeholder="Digite seu nome"
+            maxLength={20}
+            value={userName}
+            onChange={(e) => setUserName(e.target.value)}
+            onKeyPress={handleKeyPress}
+            disabled={!socket}
+          />
         </div>
-      )}
-    </div>
+        <div className="space-y-2">
+          <Label htmlFor="roomCodeInput">Código da Sala</Label>
+          <Input
+            id="roomCodeInput"
+            placeholder="Ex: ABCD"
+            maxLength={4}
+            value={roomCode}
+            onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+            onKeyPress={handleKeyPress}
+            disabled={!socket}
+            className="uppercase"
+          />
+        </div>
+        <Button 
+          onClick={handleJoinRoom} 
+          disabled={!socket || !roomCode.trim() || !userName.trim()}
+          className="w-full"
+        >
+          🚪 Entrar na Sala
+        </Button>
+        {status && (
+          <div className={`text-sm text-center p-3 rounded-md ${
+            status.includes('entrou') 
+              ? 'bg-green-500/20 text-green-200' 
+              : 'bg-destructive/20 text-destructive-foreground'
+          }`}>
+            {status}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 };
