@@ -95,11 +95,22 @@ io.on('connection', (socket) => {
   });
 
   // Entrar em uma sala
-  socket.on('join-room', (roomCode) => {
+  socket.on('join-room', ({ roomCode, userName }) => {
     const room = rooms.get(roomCode);
     
     if (!room) {
       socket.emit('error', { message: 'Sala não encontrada' });
+      return;
+    }
+    
+    // Validação do nome
+    if (!userName || userName.trim().length === 0) {
+      socket.emit('error', { message: 'Nome de usuário é obrigatório' });
+      return;
+    }
+
+    if (userName.trim().length < 2 || userName.trim().length > 20) {
+      socket.emit('error', { message: 'Nome deve ter entre 2 e 20 caracteres' });
       return;
     }
     
@@ -114,6 +125,7 @@ io.on('connection', (socket) => {
     const user = {
       id: socket.id,
       socketId: socket.id,
+      name: userName.trim(),
       joinedAt: new Date()
     };
     room.users.push(user);
