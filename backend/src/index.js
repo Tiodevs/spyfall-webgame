@@ -34,6 +34,34 @@ app.use(express.json());
 // Estrutura: { roomCode: { code: string, users: [{ id: string, socketId: string }], createdAt: Date } }
 const rooms = new Map();
 
+// Lista de locais para o jogo Spyfall
+const LOCATIONS = [
+  { id: 1, name: 'Aeroporto', icon: '✈️' },
+  { id: 2, name: 'Banco', icon: '🏦' },
+  { id: 3, name: 'Praia', icon: '🏖️' },
+  { id: 4, name: 'Cassino', icon: '🎰' },
+  { id: 5, name: 'Circo', icon: '🎪' },
+  { id: 6, name: 'Hospital', icon: '🏥' },
+  { id: 7, name: 'Hotel', icon: '🏨' },
+  { id: 8, name: 'Escola', icon: '🏫' },
+  { id: 9, name: 'Restaurante', icon: '🍽️' },
+  { id: 10, name: 'Supermercado', icon: '🛒' },
+  { id: 11, name: 'Teatro', icon: '🎭' },
+  { id: 12, name: 'Museu', icon: '🏛️' },
+  { id: 13, name: 'Estádio de Futebol', icon: '⚽' },
+  { id: 14, name: 'Delegacia', icon: '🚔' },
+  { id: 15, name: 'Navio Cruzeiro', icon: '🚢' },
+  { id: 16, name: 'Spa', icon: '💆' },
+  { id: 17, name: 'Estação Espacial', icon: '🚀' },
+  { id: 18, name: 'Submarino', icon: '🛥️' },
+  { id: 19, name: 'Base Militar', icon: '🎖️' },
+  { id: 20, name: 'Igreja', icon: '⛪' },
+  { id: 21, name: 'Universidade', icon: '🎓' },
+  { id: 22, name: 'Fazenda', icon: '🌾' },
+  { id: 23, name: 'Estúdio de TV', icon: '📺' },
+  { id: 24, name: 'Parque de Diversões', icon: '🎡' },
+];
+
 // Função auxiliar para gerar código de sala (4 letras maiúsculas)
 function generateRoomCode() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -153,6 +181,88 @@ io.on('connection', (socket) => {
     
     // Atualiza lista de salas para todos
     io.emit('rooms-updated', getRoomsList());
+  });
+
+  // Iniciar partida (apenas host pode fazer isso)
+  socket.on('start-game', ({ roomCode }) => {
+    const room = rooms.get(roomCode);
+    
+    if (!room) {
+      socket.emit('error', { message: 'Sala não encontrada' });
+      return;
+    }
+    
+    // Verifica se é o host
+    if (room.hostId !== socket.id) {
+      socket.emit('error', { message: 'Apenas o host pode iniciar a partida' });
+      return;
+    }
+    
+    // Verifica se há jogadores suficientes (mínimo 3)
+    if (room.users.length < 3) {
+      socket.emit('error', { message: 'São necessários pelo menos 3 jogadores' });
+      return;
+    }
+    
+    // Sorteia o espião
+    const spyIndex = Math.floor(Math.random() * room.users.length);
+    const spyId = room.users[spyIndex].id;
+    
+    // Sorteia o local
+    const locationIndex = Math.floor(Math.random() * LOCATIONS.length);
+    const location = LOCATIONS[locationIndex];
+    
+    // Armazena estado do jogo na sala
+    room.gameState = {
+      isPlaying: true,
+      spyId: spyId,
+      location: location,
+      startedAt: new Date()
+    };
+    
+    console.log(`Partida iniciada na sala ${roomCode}. Espião: ${spyId}, Local: ${location.name}`);
+    
+    // Envia para cada jogador seu papel
+    room.users.forEach(user => {
+      const isSpy = user.id === spyId;
+      
+      io.to(user.socketId).emit('game-started', {
+        roomCode,
+        isSpy,
+        location: isSpy ? null : location,
+        playersCount: room.users.length
+      });
+    });
+  });
+
+  // Encerrar partida
+  socket.on('end-game', ({ roomCode }) => {
+    const room = rooms.get(roomCode);
+    
+    if (!room) {
+      socket.emit('error', { message: 'Sala não encontrada' });
+      return;
+    }
+    
+    // Verifica se é o host
+    if (room.hostId !== socket.id) {
+      socket.emit('error', { message: 'Apenas o host pode encerrar a partida' });
+      return;
+    }
+    
+    // Limpa estado do jogo
+    const gameState = room.gameState;
+    room.gameState = null;
+    
+    console.log(`Partida encerrada na sala ${roomCode}`);
+    
+    // Notifica todos os jogadores
+    io.to(roomCode).emit('game-ended', {
+      roomCode,
+      spyId: gameState?.spyId,
+      spyName: room.users.find(u => u.id === gameState?.spyId)?.name,
+      location: gameState?.location
+    });
   });
 
   socket.on('disconnect', () => {
