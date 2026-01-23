@@ -3,7 +3,7 @@ import { useRoom } from '../contexts/RoomContext';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Users, LogOut, Crown, Play, Eye, EyeOff, MapPin, X, Timer } from 'lucide-react';
+import { Users, LogOut, Crown, Play, Eye, EyeOff, MapPin, X, Timer, Target, AlertTriangle, Vote, Trophy, ThumbsUp, ThumbsDown } from 'lucide-react';
 
 // Lista de todos os locais possíveis
 const ALL_LOCATIONS = [
@@ -40,6 +40,10 @@ export const GameRoom = ({ socket }) => {
   const [gameState, setGameState] = useState(null); // { isSpy, location, playersCount, startedAt, duration }
   const [crossedLocations, setCrossedLocations] = useState(new Set()); // IDs dos locais riscados
   const [timeRemaining, setTimeRemaining] = useState(null); // Tempo restante em segundos
+  const [scores, setScores] = useState({}); // Placar: { odId: pontos }
+  const [accusation, setAccusation] = useState(null); // Acusação em andamento
+  const [finalVoting, setFinalVoting] = useState(null); // Votação final
+  const [myVote, setMyVote] = useState(null); // Meu voto na votação final
   const timerIntervalRef = useRef(null);
 
   // Timer effect - calcula tempo restante localmente baseado no timestamp do servidor
@@ -109,18 +113,56 @@ export const GameRoom = ({ socket }) => {
     }
   };
 
+  // Chute do espião
+  const handleSpyGuess = (locationId) => {
+    if (socket && currentRoom) {
+      socket.emit('spy-guess', { roomCode: currentRoom, locationId });
+    }
+  };
+
+  // Iniciar acusação
+  const handleStartAccusation = (accusedId) => {
+    if (socket && currentRoom) {
+      socket.emit('start-accusation', { roomCode: currentRoom, accusedId });
+    }
+  };
+
+  // Votar na acusação
+  const handleVoteAccusation = (vote) => {
+    if (socket && currentRoom) {
+      socket.emit('vote-accusation', { roomCode: currentRoom, vote });
+    }
+  };
+
+  // Cancelar acusação
+  const handleCancelAccusation = () => {
+    if (socket && currentRoom) {
+      socket.emit('cancel-accusation', { roomCode: currentRoom });
+    }
+  };
+
+  // Voto final
+  const handleFinalVote = (votedForId) => {
+    if (socket && currentRoom) {
+      socket.emit('final-vote', { roomCode: currentRoom, votedForId });
+      setMyVote(votedForId);
+    }
+  };
+
   useEffect(() => {
     if (!socket || !currentRoom) return;
 
     const handleJoinedRoom = (data) => {
       updateUsers(data.users);
       setIsHost(data.hostId === socket.id);
+      if (data.scores) setScores(data.scores);
     };
 
     const handleUserJoined = (data) => {
       setStatus(`Novo usuário entrou na sala!`);
       updateUsers(data.users);
       setIsHost(data.hostId === socket.id);
+      if (data.scores) setScores(data.scores);
       setTimeout(() => setStatus(''), 3000);
     };
 
@@ -128,11 +170,16 @@ export const GameRoom = ({ socket }) => {
       setStatus(`Um usuário saiu da sala`);
       updateUsers(data.users);
       setIsHost(data.hostId === socket.id);
+      if (data.scores) setScores(data.scores);
       setTimeout(() => setStatus(''), 3000);
     };
 
     const handleGameStarted = (data) => {
       setCrossedLocations(new Set()); // Limpa os locais riscados ao iniciar nova partida
+      setAccusation(null);
+      setFinalVoting(null);
+      setMyVote(null);
+      if (data.scores) setScores(data.scores);
       setGameState({
         isSpy: data.isSpy,
         location: data.location,
@@ -149,11 +196,83 @@ export const GameRoom = ({ socket }) => {
       }
       setTimeRemaining(null);
       setGameState(null);
+      setAccusation(null);
+      setFinalVoting(null);
+      setMyVote(null);
       setCrossedLocations(new Set()); // Limpa os locais riscados ao terminar
+      if (data.scores) setScores(data.scores);
       
-      const reasonText = data.reason === 'timeout' ? ' (tempo esgotado)' : '';
-      setStatus(`Partida encerrada${reasonText}! O espião era ${data.spyName}. Local: ${data.location?.name}`);
-      setTimeout(() => setStatus(''), 8000);
+      // Monta mensagem de resultado
+      let reasonText = '';
+      if (data.reason === 'spy-guess') {
+        if (data.spyGuessCorrect) {
+          reasonText = `O espião (${data.spyName}) adivinhou o local corretamente! +2 pontos para o espião.`;
+        } else {
+          reasonText = `O espião (${data.spyName}) errou o chute (tentou ${data.spyGuessedLocation?.name}). +1 ponto para todos os agentes.`;
+        }
+      } else if (data.reason === 'accusation') {
+        if (data.accusedWasSpy) {
+          reasonText = `Acusação correta! ${data.accuserName} identificou o espião (${data.spyName}). +1 para agentes, +2 extra para ${data.accuserName}.`;
+        } else {
+          reasonText = `Acusação errada! ${data.accusedName} era inocente. +2 pontos para o espião.`;
+        }
+      } else if (data.reason === 'final-vote') {
+        reasonText = `Votação final encerrada! O espião era ${data.spyName}. +1 ponto para quem votou corretamente.`;
+      } else {
+        reasonText = `Partida encerrada! O espião era ${data.spyName}. Local: ${data.location?.name}`;
+      }
+      
+      setStatus(reasonText);
+      setTimeout(() => setStatus(''), 10000);
+    };
+
+    // Handlers de acusação
+    const handleAccusationStarted = (data) => {
+      setAccusation({
+        accuserId: data.accuserId,
+        accuserName: data.accuserName,
+        accusedId: data.accusedId,
+        accusedName: data.accusedName,
+        votes: data.votes
+      });
+    };
+
+    const handleAccusationVoteUpdate = (data) => {
+      setAccusation(prev => prev ? {
+        ...prev,
+        votesCount: data.votesCount,
+        votesNeeded: data.votesNeeded
+      } : null);
+    };
+
+    const handleAccusationFailed = (data) => {
+      setAccusation(null);
+      setStatus(data.message);
+      setTimeout(() => setStatus(''), 5000);
+    };
+
+    const handleAccusationCancelled = (data) => {
+      setAccusation(null);
+      setStatus(data.message);
+      setTimeout(() => setStatus(''), 3000);
+    };
+
+    // Handler de votação final
+    const handleVotingStarted = (data) => {
+      setFinalVoting({
+        isActive: true,
+        votesCount: 0,
+        totalPlayers: users.length
+      });
+      setStatus(data.message);
+    };
+
+    const handleFinalVoteUpdate = (data) => {
+      setFinalVoting(prev => prev ? {
+        ...prev,
+        votesCount: data.votesCount,
+        totalPlayers: data.totalPlayers
+      } : null);
     };
 
     const handleError = (data) => {
@@ -166,6 +285,12 @@ export const GameRoom = ({ socket }) => {
     socket.on('user-left', handleUserLeft);
     socket.on('game-started', handleGameStarted);
     socket.on('game-ended', handleGameEnded);
+    socket.on('accusation-started', handleAccusationStarted);
+    socket.on('accusation-vote-update', handleAccusationVoteUpdate);
+    socket.on('accusation-failed', handleAccusationFailed);
+    socket.on('accusation-cancelled', handleAccusationCancelled);
+    socket.on('voting-started', handleVotingStarted);
+    socket.on('final-vote-update', handleFinalVoteUpdate);
     socket.on('error', handleError);
 
     return () => {
@@ -174,9 +299,15 @@ export const GameRoom = ({ socket }) => {
       socket.off('user-left', handleUserLeft);
       socket.off('game-started', handleGameStarted);
       socket.off('game-ended', handleGameEnded);
+      socket.off('accusation-started', handleAccusationStarted);
+      socket.off('accusation-vote-update', handleAccusationVoteUpdate);
+      socket.off('accusation-failed', handleAccusationFailed);
+      socket.off('accusation-cancelled', handleAccusationCancelled);
+      socket.off('voting-started', handleVotingStarted);
+      socket.off('final-vote-update', handleFinalVoteUpdate);
       socket.off('error', handleError);
     };
-  }, [socket, currentRoom, updateUsers]);
+  }, [socket, currentRoom, updateUsers, users.length]);
 
   if (!currentRoom) return null;
 
