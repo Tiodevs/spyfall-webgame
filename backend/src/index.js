@@ -482,12 +482,14 @@ io.on('connection', (socket) => {
         if (accusedIsSpy) {
           // Acusação correta! Agentes ganham pontos
           room.users.forEach(user => {
-            if (user.id !== room.gameState.spyId) {
-              // +1 ponto para todos os agentes
-              room.scores[user.id] = (room.scores[user.id] || 0) + 1;
+            // +1 ponto para agentes que votaram a favor (exceto o acusador, que ganha +2)
+            if (user.id !== room.gameState.spyId && user.id !== accusation.accuserId) {
+              if (accusation.votes[user.id] === true) {
+                room.scores[user.id] = (room.scores[user.id] || 0) + 1;
+              }
             }
           });
-          // +2 pontos extras para quem fez a acusação
+          // +2 pontos para quem fez a acusação
           room.scores[accusation.accuserId] = (room.scores[accusation.accuserId] || 0) + 2;
           
           console.log(`Acusação correta na sala ${roomCode}! Espião pego.`);
