@@ -70,22 +70,22 @@ export const CreateRoom = ({ socket, onRoomJoined }) => {
   return (
     <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
       <DialogTrigger asChild>
-        <Button size="lg" className="w-full text-lg py-6">
-          <Plus className="w-5 h-5 mr-2" />
+        <Button size="lg" className="w-full text-base sm:text-lg py-5 sm:py-6">
+          <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
           Criar Nova Sala
         </Button>
       </DialogTrigger>
       <DialogContent className="bg-zinc-900 border-zinc-800">
         <DialogHeader>
-          <DialogTitle className="text-xl">Criar Nova Sala</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-lg sm:text-xl">Criar Nova Sala</DialogTitle>
+          <DialogDescription className="text-sm">
             Digite seu nome para criar e entrar na sala.
           </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-2 sm:py-4">
           <div className="space-y-2">
-            <Label htmlFor="createUserName">Seu Nome</Label>
+            <Label htmlFor="createUserName" className="text-sm sm:text-base">Seu Nome</Label>
             <Input
               id="createUserName"
               placeholder="Digite seu nome"
@@ -93,12 +93,12 @@ export const CreateRoom = ({ socket, onRoomJoined }) => {
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
               onKeyPress={handleKeyPress}
-              autoFocus
+              className="text-base"
             />
           </div>
           
           {status && (
-            <div className={`text-sm text-center p-3 rounded-md ${
+            <div className={`text-xs sm:text-sm text-center p-2 sm:p-3 rounded-md ${
               status.includes('caracteres') 
                 ? 'bg-red-900/30 text-red-400 border border-red-400/30' 
                 : 'bg-[#01DEB2]/10 text-[#01DEB2] border border-[#01DEB2]/30'
@@ -109,10 +109,10 @@ export const CreateRoom = ({ socket, onRoomJoined }) => {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+          <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
             Cancelar
           </Button>
-          <Button onClick={handleCreateRoom} disabled={!userName.trim()}>
+          <Button onClick={handleCreateRoom} disabled={!userName.trim()} className="w-full sm:w-auto">
             <Plus className="w-4 h-4 mr-2" />
             Criar Sala
           </Button>

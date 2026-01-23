@@ -59,6 +59,18 @@
       'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Suporte a safe-area no iOS para evitar sobreposição com elementos do sistema */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* Evitar comportamentos estranhos de touch no iOS */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Melhor comportamento de scroll no iOS */
+  html {
+    -webkit-overflow-scrolling: touch;
   }
 }
 

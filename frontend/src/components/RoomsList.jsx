@@ -97,15 +97,15 @@ export const RoomsList = ({ socket, onRoomJoined }) => {
   return (
     <>
       <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl flex items-center gap-2">
-            <List className="w-6 h-6" />
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-xl sm:text-2xl flex items-center gap-2">
+            <List className="w-5 h-5 sm:w-6 sm:h-6" />
             Salas Disponíveis
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
           {rooms.length === 0 ? (
-            <p className="text-center text-zinc-400 py-8 italic">
+            <p className="text-center text-zinc-400 py-6 sm:py-8 italic text-sm sm:text-base">
               Nenhuma sala disponível. Crie uma nova sala!
             </p>
           ) : (
@@ -113,30 +113,29 @@ export const RoomsList = ({ socket, onRoomJoined }) => {
               {rooms.map((room) => (
                 <div 
                   key={room.code} 
-                  className="flex items-center justify-between p-4 rounded-lg bg-zinc-800/50 border border-zinc-700 hover:bg-zinc-800 transition-colors"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 sm:p-4 rounded-lg bg-zinc-800/50 border border-zinc-700 hover:bg-zinc-800 transition-colors"
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold text-[#01DEB2]">{room.code}</span>
-                    <span className="text-sm text-zinc-400">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <span className="text-base sm:text-lg font-bold text-[#01DEB2]">{room.code}</span>
+                    <span className="text-xs sm:text-sm text-zinc-400">
                       {new Date(room.createdAt).toLocaleTimeString('pt-BR', { 
                         hour: '2-digit', 
                         minute: '2-digit' 
                       })}
                     </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant="secondary">
+                    <Badge variant="secondary" className="text-xs sm:text-sm">
                       {room.userCount} jogador{room.userCount !== 1 ? 'es' : ''}
                     </Badge>
-                    <Button 
-                      size="sm" 
-                      onClick={() => handleOpenDialog(room)}
-                      disabled={!socket}
-                    >
-                      <LogIn className="w-4 h-4 mr-1" />
-                      Entrar
-                    </Button>
                   </div>
+                  <Button 
+                    size="sm" 
+                    onClick={() => handleOpenDialog(room)}
+                    disabled={!socket}
+                    className="w-full sm:w-auto"
+                  >
+                    <LogIn className="w-4 h-4 mr-1" />
+                    Entrar
+                  </Button>
                 </div>
               ))}
             </div>
@@ -147,17 +146,17 @@ export const RoomsList = ({ socket, onRoomJoined }) => {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="bg-zinc-900 border-zinc-800">
           <DialogHeader>
-            <DialogTitle className="text-xl">
+            <DialogTitle className="text-lg sm:text-xl">
               Entrar na Sala <span className="text-[#01DEB2]">{selectedRoom?.code}</span>
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-sm">
               Digite seu nome para entrar na partida.
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-2 sm:py-4">
             <div className="space-y-2">
-              <Label htmlFor="dialogUserName">Seu Nome</Label>
+              <Label htmlFor="dialogUserName" className="text-sm sm:text-base">Seu Nome</Label>
               <Input
                 id="dialogUserName"
                 placeholder="Digite seu nome"
@@ -165,22 +164,22 @@ export const RoomsList = ({ socket, onRoomJoined }) => {
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
                 onKeyPress={handleKeyPress}
-                autoFocus
+                className="text-base"
               />
             </div>
             
             {status && (
-              <div className="text-sm text-center p-3 rounded-md bg-red-900/30 text-red-400 border border-red-400/30">
+              <div className="text-xs sm:text-sm text-center p-2 sm:p-3 rounded-md bg-red-900/30 text-red-400 border border-red-400/30">
                 {status}
               </div>
             )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
               Cancelar
             </Button>
-            <Button onClick={handleJoinRoom} disabled={!userName.trim()}>
+            <Button onClick={handleJoinRoom} disabled={!userName.trim()} className="w-full sm:w-auto">
               <LogIn className="w-4 h-4 mr-2" />
               Entrar
             </Button>

@@ -94,43 +94,43 @@ export const GameRoom = ({ socket }) => {
   // Tela de jogo em andamento
   if (gameState) {
     return (
-      <div className="container mx-auto p-6 max-w-4xl">
+      <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
         <Card>
-          <CardHeader className="text-center border-b border-zinc-800">
-            <div className="space-y-4">
-              <Badge variant="secondary" className="text-sm px-4 py-1">
+          <CardHeader className="text-center border-b border-zinc-800 p-4 sm:p-6">
+            <div className="space-y-3 sm:space-y-4">
+              <Badge variant="secondary" className="text-xs sm:text-sm px-3 sm:px-4 py-1">
                 Partida em Andamento
               </Badge>
               
               {gameState.isSpy ? (
-                <div className="space-y-4 py-4">
-                  <div className="w-20 h-20 mx-auto bg-red-500/20 rounded-full flex items-center justify-center">
-                    <EyeOff className="w-10 h-10 text-red-400" />
+                <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-red-500/20 rounded-full flex items-center justify-center">
+                    <EyeOff className="w-8 h-8 sm:w-10 sm:h-10 text-red-400" />
                   </div>
-                  <CardTitle className="text-4xl font-bold text-red-400">
+                  <CardTitle className="text-2xl sm:text-4xl font-bold text-red-400">
                     Você é o Espião!
                   </CardTitle>
-                  <p className="text-zinc-400 max-w-md mx-auto">
+                  <p className="text-sm sm:text-base text-zinc-400 max-w-md mx-auto px-2">
                     Descubra o local fazendo perguntas aos outros jogadores. 
                     Não deixe que descubram que você é o espião!
                   </p>
                 </div>
               ) : (
-                <div className="space-y-4 py-4">
-                  <div className="w-20 h-20 mx-auto bg-[#01DEB2]/20 rounded-full flex items-center justify-center">
-                    <Eye className="w-10 h-10 text-[#01DEB2]" />
+                <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-[#01DEB2]/20 rounded-full flex items-center justify-center">
+                    <Eye className="w-8 h-8 sm:w-10 sm:h-10 text-[#01DEB2]" />
                   </div>
-                  <CardTitle className="text-4xl font-bold text-[#01DEB2]">
+                  <CardTitle className="text-2xl sm:text-4xl font-bold text-[#01DEB2]">
                     Você é Cidadão
                   </CardTitle>
-                  <div className="bg-zinc-800/50 rounded-lg p-6 border border-zinc-700 max-w-sm mx-auto">
-                    <p className="text-sm text-zinc-400 uppercase tracking-wider mb-2">O Local é:</p>
-                    <div className="flex items-center justify-center gap-3">
-                      <span className="text-4xl">{gameState.location?.icon}</span>
-                      <span className="text-2xl font-bold text-zinc-100">{gameState.location?.name}</span>
+                  <div className="bg-zinc-800/50 rounded-lg p-4 sm:p-6 border border-zinc-700 max-w-sm mx-auto">
+                    <p className="text-xs sm:text-sm text-zinc-400 uppercase tracking-wider mb-2">O Local é:</p>
+                    <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
+                      <span className="text-3xl sm:text-4xl">{gameState.location?.icon}</span>
+                      <span className="text-xl sm:text-2xl font-bold text-zinc-100 break-words text-center">{gameState.location?.name}</span>
                     </div>
                   </div>
-                  <p className="text-zinc-400 max-w-md mx-auto">
+                  <p className="text-sm sm:text-base text-zinc-400 max-w-md mx-auto px-2">
                     Responda às perguntas sem revelar o local. 
                     Tente descobrir quem é o espião!
                   </p>
@@ -139,32 +139,32 @@ export const GameRoom = ({ socket }) => {
             </div>
           </CardHeader>
           
-          <CardContent className="p-6">
-            <div className="space-y-6">
+          <CardContent className="p-4 sm:p-6">
+            <div className="space-y-4 sm:space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-xl font-semibold flex items-center gap-2">
-                  <Users className="w-5 h-5" />
+                <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2">
+                  <Users className="w-4 h-4 sm:w-5 sm:h-5" />
                   Jogadores
                 </h3>
-                <Badge variant="secondary">
+                <Badge variant="secondary" className="text-xs sm:text-sm">
                   {gameState.playersCount} jogadores
                 </Badge>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {users.map((user) => (
                   <div 
                     key={user.id} 
-                    className={`p-3 rounded-lg border text-center ${
+                    className={`p-2 sm:p-3 rounded-lg border text-center ${
                       user.id === socket?.id 
                         ? 'bg-[#01DEB2]/10 border-[#01DEB2]/30' 
                         : 'bg-zinc-800/50 border-zinc-700'
                     }`}
                   >
-                    <span className="font-medium text-zinc-100">
+                    <span className="font-medium text-sm sm:text-base text-zinc-100 break-words">
                       {user.name}
                       {user.id === socket?.id && (
-                        <span className="text-[#01DEB2] text-sm ml-1">(Você)</span>
+                        <span className="text-[#01DEB2] text-xs sm:text-sm ml-1">(Você)</span>
                       )}
                     </span>
                   </div>
@@ -175,7 +175,7 @@ export const GameRoom = ({ socket }) => {
                 <Button 
                   variant="destructive" 
                   onClick={handleEndGame}
-                  className="w-full text-base py-6"
+                  className="w-full text-sm sm:text-base py-5 sm:py-6"
                 >
                   Encerrar Partida e Revelar Espião
                 </Button>
@@ -189,24 +189,24 @@ export const GameRoom = ({ socket }) => {
 
   // Tela do lobby (aguardando início)
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
+    <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
       <Card>
-        <CardHeader className="text-center border-b border-zinc-800">
+        <CardHeader className="text-center border-b border-zinc-800 p-4 sm:p-6">
           <div className="space-y-2">
-            <p className="text-sm text-zinc-400 uppercase tracking-wider">Código da Sala</p>
-            <CardTitle className="text-5xl font-bold text-[#01DEB2] tracking-widest">
+            <p className="text-xs sm:text-sm text-zinc-400 uppercase tracking-wider">Código da Sala</p>
+            <CardTitle className="text-3xl sm:text-5xl font-bold text-[#01DEB2] tracking-widest">
               {currentRoom}
             </CardTitle>
-            <p className="text-zinc-400">
+            <p className="text-sm sm:text-base text-zinc-400">
               Bem-vindo, <strong className="text-zinc-100">{userName}</strong>!
             </p>
           </div>
         </CardHeader>
         
-        <CardContent className="p-6">
-          <div className="space-y-6">
+        <CardContent className="p-4 sm:p-6">
+          <div className="space-y-4 sm:space-y-6">
             {status && (
-              <div className={`p-4 rounded-lg text-center font-medium ${
+              <div className={`p-3 sm:p-4 rounded-lg text-center text-sm sm:text-base font-medium ${
                 status.includes('encerrada') 
                   ? 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
                   : status.includes('necessários')
@@ -218,39 +218,39 @@ export const GameRoom = ({ socket }) => {
             )}
 
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-semibold flex items-center gap-2">
-                <Users className="w-5 h-5" />
+              <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2">
+                <Users className="w-4 h-4 sm:w-5 sm:h-5" />
                 Jogadores na Sala
               </h3>
-              <Badge variant="secondary" className="text-base px-3 py-1">
+              <Badge variant="secondary" className="text-sm sm:text-base px-2 sm:px-3 py-1">
                 {users.length} jogador{users.length !== 1 ? 'es' : ''}
               </Badge>
             </div>
             
             <div className="space-y-2">
               {users.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8 italic">
+                <p className="text-center text-muted-foreground py-6 sm:py-8 italic text-sm sm:text-base">
                   Aguardando jogadores...
                 </p>
               ) : (
                 users.map((user) => (
                   <div 
                     key={user.id} 
-                    className={`p-4 rounded-lg border transition-colors ${
+                    className={`p-3 sm:p-4 rounded-lg border transition-colors ${
                       user.id === socket?.id 
                         ? 'bg-[#01DEB2]/10 border-[#01DEB2]/30' 
                         : 'bg-zinc-800/50 border-zinc-700 hover:bg-zinc-800'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-lg text-zinc-100 flex items-center gap-2">
-                        {user.name}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-base sm:text-lg text-zinc-100 flex items-center gap-1 sm:gap-2 flex-wrap break-words min-w-0">
+                        <span className="break-all">{user.name}</span>
                         {user.id === socket?.id && (
-                          <span className="text-[#01DEB2] font-semibold">(Você)</span>
+                          <span className="text-[#01DEB2] font-semibold text-sm">(Você)</span>
                         )}
                       </span>
                       {user.isHost && (
-                        <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+                        <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 shrink-0 text-xs sm:text-sm">
                           <Crown className="w-3 h-3 mr-1" />
                           Host
                         </Badge>
@@ -262,8 +262,8 @@ export const GameRoom = ({ socket }) => {
             </div>
 
             {users.length < 3 && (
-              <div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 text-center">
-                <p className="text-zinc-400">
+              <div className="p-3 sm:p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 text-center">
+                <p className="text-sm sm:text-base text-zinc-400">
                   <MapPin className="w-4 h-4 inline mr-2" />
                   Aguardando mais jogadores... (mínimo 3)
                 </p>
@@ -273,9 +273,9 @@ export const GameRoom = ({ socket }) => {
             {isHost && users.length >= 3 && (
               <Button 
                 onClick={handleStartGame}
-                className="w-full text-lg py-6"
+                className="w-full text-base sm:text-lg py-5 sm:py-6"
               >
-                <Play className="w-5 h-5 mr-2" />
+                <Play className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
                 Começar Partida
               </Button>
             )}
@@ -283,9 +283,9 @@ export const GameRoom = ({ socket }) => {
             <Button 
               variant="destructive" 
               onClick={handleLeaveRoom}
-              className="w-full text-base py-6"
+              className="w-full text-sm sm:text-base py-5 sm:py-6"
             >
-              <LogOut className="w-5 h-5 mr-2" />
+              <LogOut className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
               Sair da Sala
             </Button>
           </div>
