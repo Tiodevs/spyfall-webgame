@@ -1,15 +1,17 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useSocket } from './hooks/useSocket';
 import { RoomProvider, useRoom } from './contexts/RoomContext';
 import { CreateRoom } from './components/CreateRoom';
 import { RoomsList } from './components/RoomsList';
 import { GameRoom } from './components/GameRoom';
+import { GameGuideDialog } from './components/GameGuideDialog';
 import { AppBackground } from './components/layout/AppBackground';
 import { AppHeader } from './components/layout/AppHeader';
 import { Sparkles } from 'lucide-react';
 
 function AppContent() {
   const { currentRoom, playerId, joinRoom, updateUsers, getSession } = useRoom();
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const handleReconnect = useCallback(
     (socketInstance) => {
@@ -35,16 +37,22 @@ function AppContent() {
   };
 
   const showReconnectBanner = currentRoom && (!isConnected || isReconnecting);
+  const onHomeScreen = !currentRoom;
 
   return (
     <div className="relative min-h-screen bg-background text-foreground">
       <AppBackground />
 
       <div className="relative z-10 mx-auto flex min-h-screen max-w-4xl flex-col px-4 pb-10 sm:px-6 lg:px-8">
-        <AppHeader isConnected={isConnected && !isReconnecting} />
+        <AppHeader
+          isConnected={isConnected && !isReconnecting}
+          onOpenGuide={() => setGuideOpen(true)}
+        />
+
+        <GameGuideDialog open={guideOpen} onOpenChange={setGuideOpen} />
 
         <main className="flex-1 space-y-8 sm:space-y-10">
-          {!currentRoom && (
+          {onHomeScreen && (
             <section className="animate-slide-up space-y-6 pt-2 sm:pt-6">
               <div className="space-y-4">
                 <div className="inline-flex items-center gap-2 rounded-sm border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-wider text-accent">
