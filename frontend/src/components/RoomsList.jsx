@@ -14,17 +14,17 @@ import {
 } from './ui/dialog';
 import { List, LogIn } from 'lucide-react';
 
-export const RoomsList = ({ socket, onRoomJoined }) => {
+export const RoomsList = ({ socket, playerId, onRoomJoined }) => {
   const [rooms, setRooms] = useState([]);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [userName, setUserName] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [status, setStatus] = useState('');
+  const [pendingRoomCode, setPendingRoomCode] = useState(null);
 
   useEffect(() => {
     if (!socket) return;
 
-    // Busca salas ao conectar
     const fetchRooms = async () => {
       try {
         const response = await fetch(`${import.meta.env.VITE_SOCKET_URL}/api/rooms`);
@@ -41,30 +41,35 @@ export const RoomsList = ({ socket, onRoomJoined }) => {
       setRooms(updatedRooms);
     };
 
-    const handleJoinedRoom = (data) => {
-      if (onRoomJoined) {
-        onRoomJoined(data.roomCode, userName.trim(), data.users);
+    const handleRoomSync = (data) => {
+      if (pendingRoomCode && data.roomCode === pendingRoomCode) {
+        if (onRoomJoined) {
+          onRoomJoined(data.roomCode, userName.trim(), data.users);
+        }
+        setIsDialogOpen(false);
+        setUserName('');
+        setSelectedRoom(null);
+        setPendingRoomCode(null);
+        setStatus('');
       }
-      setIsDialogOpen(false);
-      setUserName('');
-      setSelectedRoom(null);
     };
 
     const handleError = (data) => {
       setStatus(data.message);
+      setPendingRoomCode(null);
       setTimeout(() => setStatus(''), 5000);
     };
 
     socket.on('rooms-updated', handleRoomsUpdated);
-    socket.on('joined-room', handleJoinedRoom);
+    socket.on('room-sync', handleRoomSync);
     socket.on('error', handleError);
 
     return () => {
       socket.off('rooms-updated', handleRoomsUpdated);
-      socket.off('joined-room', handleJoinedRoom);
+      socket.off('room-sync', handleRoomSync);
       socket.off('error', handleError);
     };
-  }, [socket, userName, onRoomJoined]);
+  }, [socket, userName, playerId, onRoomJoined, pendingRoomCode]);
 
   const handleOpenDialog = (room) => {
     setSelectedRoom(room);
@@ -85,7 +90,12 @@ export const RoomsList = ({ socket, onRoomJoined }) => {
       return;
     }
 
-    socket.emit('join-room', { roomCode: selectedRoom.code, userName: userName.trim() });
+    setPendingRoomCode(selectedRoom.code);
+    socket.emit('join-room', {
+      roomCode: selectedRoom.code,
+      userName: userName.trim(),
+      playerId
+    });
   };
 
   const handleKeyPress = (e) => {

@@ -13,10 +13,11 @@ import {
 } from './ui/dialog';
 import { Plus } from 'lucide-react';
 
-export const CreateRoom = ({ socket, onRoomJoined }) => {
+export const CreateRoom = ({ socket, playerId, onRoomJoined }) => {
   const [userName, setUserName] = useState('');
   const [status, setStatus] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [pendingRoomCode, setPendingRoomCode] = useState(null);
 
   const handleCreateRoom = () => {
     if (!socket || !userName.trim()) {
@@ -45,27 +46,42 @@ export const CreateRoom = ({ socket, onRoomJoined }) => {
 
     const handleRoomCreated = (data) => {
       setStatus(`Sala criada! Entrando...`);
-      // Auto-join na sala criada com o nome
-      socket.emit('join-room', { roomCode: data.roomCode, userName: userName.trim() });
+      setPendingRoomCode(data.roomCode);
+      socket.emit('join-room', {
+        roomCode: data.roomCode,
+        userName: userName.trim(),
+        playerId
+      });
     };
 
-    const handleJoinedRoom = (data) => {
-      if (onRoomJoined) {
-        onRoomJoined(data.roomCode, userName.trim(), data.users);
+    const handleRoomSync = (data) => {
+      if (pendingRoomCode && data.roomCode === pendingRoomCode) {
+        if (onRoomJoined) {
+          onRoomJoined(data.roomCode, userName.trim(), data.users);
+        }
+        setIsDialogOpen(false);
+        setUserName('');
+        setStatus('');
+        setPendingRoomCode(null);
       }
-      setIsDialogOpen(false);
-      setUserName('');
-      setStatus('');
+    };
+
+    const handleError = (data) => {
+      setStatus(data.message);
+      setPendingRoomCode(null);
+      setTimeout(() => setStatus(''), 5000);
     };
 
     socket.on('room-created', handleRoomCreated);
-    socket.on('joined-room', handleJoinedRoom);
+    socket.on('room-sync', handleRoomSync);
+    socket.on('error', handleError);
 
     return () => {
       socket.off('room-created', handleRoomCreated);
-      socket.off('joined-room', handleJoinedRoom);
+      socket.off('room-sync', handleRoomSync);
+      socket.off('error', handleError);
     };
-  }, [socket, userName, onRoomJoined]);
+  }, [socket, userName, playerId, onRoomJoined, pendingRoomCode]);
 
   return (
     <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

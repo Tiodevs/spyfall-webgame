@@ -33,7 +33,7 @@ const ALL_LOCATIONS = [
   { id: 24, name: 'Parque de Diversões', icon: '🎡' },
 ];
 
-export const GameRoom = ({ socket }) => {
+export const GameRoom = ({ socket, playerId }) => {
   const { currentRoom, userName, users, leaveRoom, updateUsers } = useRoom();
   const [status, setStatus] = useState('');
   const [isHost, setIsHost] = useState(false);
@@ -94,11 +94,35 @@ export const GameRoom = ({ socket }) => {
   };
 
   const handleLeaveRoom = () => {
-    if (socket) {
-      socket.disconnect();
-      socket.connect();
+    if (socket && currentRoom) {
+      socket.emit('leave-room', { roomCode: currentRoom });
     }
     leaveRoom();
+  };
+
+  const applyRoomSync = (data) => {
+    updateUsers(data.users);
+    setIsHost(data.hostId === playerId);
+    if (data.scores) setScores(data.scores);
+
+    if (data.game?.isPlaying) {
+      setGameState({
+        isSpy: data.game.isSpy,
+        location: data.game.location,
+        playersCount: data.game.playersCount,
+        startedAt: data.game.startedAt,
+        duration: data.game.duration
+      });
+      setAccusation(data.game.accusation);
+      setFinalVoting(data.game.finalVoting);
+      setMyVote(data.game.finalVoting?.myVote ?? null);
+    } else {
+      setGameState(null);
+      setAccusation(null);
+      setFinalVoting(null);
+      setMyVote(null);
+      setCrossedLocations(new Set());
+    }
   };
 
   const handleStartGame = () => {
@@ -152,16 +176,17 @@ export const GameRoom = ({ socket }) => {
   useEffect(() => {
     if (!socket || !currentRoom) return;
 
-    const handleJoinedRoom = (data) => {
-      updateUsers(data.users);
-      setIsHost(data.hostId === socket.id);
-      if (data.scores) setScores(data.scores);
+    const handleRoomSync = (data) => {
+      if (data.game?.isPlaying) {
+        setCrossedLocations(new Set());
+      }
+      applyRoomSync(data);
     };
 
     const handleUserJoined = (data) => {
       setStatus(`Novo usuário entrou na sala!`);
       updateUsers(data.users);
-      setIsHost(data.hostId === socket.id);
+      setIsHost(data.hostId === playerId);
       if (data.scores) setScores(data.scores);
       setTimeout(() => setStatus(''), 3000);
     };
@@ -169,24 +194,29 @@ export const GameRoom = ({ socket }) => {
     const handleUserLeft = (data) => {
       setStatus(`Um usuário saiu da sala`);
       updateUsers(data.users);
-      setIsHost(data.hostId === socket.id);
+      setIsHost(data.hostId === playerId);
       if (data.scores) setScores(data.scores);
+      if (gameState && data.playersCount !== undefined) {
+        setGameState(prev => prev ? { ...prev, playersCount: data.playersCount } : null);
+      }
       setTimeout(() => setStatus(''), 3000);
     };
 
-    const handleGameStarted = (data) => {
-      setCrossedLocations(new Set()); // Limpa os locais riscados ao iniciar nova partida
-      setAccusation(null);
-      setFinalVoting(null);
-      setMyVote(null);
+    const handlePlayerDisconnected = (data) => {
+      updateUsers(data.users);
+      setIsHost(data.hostId === playerId);
       if (data.scores) setScores(data.scores);
-      setGameState({
-        isSpy: data.isSpy,
-        location: data.location,
-        playersCount: data.playersCount,
-        startedAt: data.startedAt,
-        duration: data.duration
-      });
+      if (gameState && data.playersCount !== undefined) {
+        setGameState(prev => prev ? { ...prev, playersCount: data.playersCount } : null);
+      }
+    };
+
+    const handlePlayerReconnected = (data) => {
+      updateUsers(data.users);
+      setIsHost(data.hostId === playerId);
+      if (data.scores) setScores(data.scores);
+      setStatus('Um jogador reconectou.');
+      setTimeout(() => setStatus(''), 3000);
     };
 
     const handleGameEnded = (data) => {
@@ -218,6 +248,8 @@ export const GameRoom = ({ socket }) => {
         }
       } else if (data.reason === 'final-vote') {
         reasonText = `Votação final encerrada! O espião era ${data.spyName}. +1 ponto para quem votou corretamente.`;
+      } else if (data.reason === 'spy-disconnected' || data.reason === 'spy-left') {
+        reasonText = `O espião (${data.spyName}) saiu da partida. Local: ${data.location?.name}`;
       } else {
         reasonText = `Partida encerrada! O espião era ${data.spyName}. Local: ${data.location?.name}`;
       }
@@ -241,7 +273,8 @@ export const GameRoom = ({ socket }) => {
       setAccusation(prev => prev ? {
         ...prev,
         votesCount: data.votesCount,
-        votesNeeded: data.votesNeeded
+        votesNeeded: data.votesNeeded,
+        votes: data.votes ?? prev.votes
       } : null);
     };
 
@@ -262,8 +295,9 @@ export const GameRoom = ({ socket }) => {
       setFinalVoting({
         isActive: true,
         votesCount: 0,
-        totalPlayers: users.length
+        totalPlayers: data.totalPlayers ?? users.filter(u => u.connected !== false).length
       });
+      setMyVote(null);
       setStatus(data.message);
     };
 
@@ -277,13 +311,20 @@ export const GameRoom = ({ socket }) => {
 
     const handleError = (data) => {
       setStatus(data.message);
+      if (
+        data.message?.includes('não está nesta sala') ||
+        data.message?.includes('Sala não encontrada')
+      ) {
+        leaveRoom();
+      }
       setTimeout(() => setStatus(''), 5000);
     };
 
-    socket.on('joined-room', handleJoinedRoom);
+    socket.on('room-sync', handleRoomSync);
     socket.on('user-joined', handleUserJoined);
     socket.on('user-left', handleUserLeft);
-    socket.on('game-started', handleGameStarted);
+    socket.on('player-disconnected', handlePlayerDisconnected);
+    socket.on('player-reconnected', handlePlayerReconnected);
     socket.on('game-ended', handleGameEnded);
     socket.on('accusation-started', handleAccusationStarted);
     socket.on('accusation-vote-update', handleAccusationVoteUpdate);
@@ -294,10 +335,11 @@ export const GameRoom = ({ socket }) => {
     socket.on('error', handleError);
 
     return () => {
-      socket.off('joined-room', handleJoinedRoom);
+      socket.off('room-sync', handleRoomSync);
       socket.off('user-joined', handleUserJoined);
       socket.off('user-left', handleUserLeft);
-      socket.off('game-started', handleGameStarted);
+      socket.off('player-disconnected', handlePlayerDisconnected);
+      socket.off('player-reconnected', handlePlayerReconnected);
       socket.off('game-ended', handleGameEnded);
       socket.off('accusation-started', handleAccusationStarted);
       socket.off('accusation-vote-update', handleAccusationVoteUpdate);
@@ -307,7 +349,7 @@ export const GameRoom = ({ socket }) => {
       socket.off('final-vote-update', handleFinalVoteUpdate);
       socket.off('error', handleError);
     };
-  }, [socket, currentRoom, updateUsers, users.length]);
+  }, [socket, currentRoom, updateUsers, playerId]);
 
   if (!currentRoom) return null;
 
@@ -346,7 +388,7 @@ export const GameRoom = ({ socket }) => {
                 <>
                   <p className="text-center text-zinc-400 text-sm">Selecione um jogador para votar:</p>
                   <div className="grid gap-2">
-                    {users.filter(u => u.id !== socket?.id).map((user) => (
+                    {users.filter(u => u.id !== playerId && u.connected !== false).map((user) => (
                       <Button
                         key={user.id}
                         variant="outline"
@@ -369,11 +411,11 @@ export const GameRoom = ({ socket }) => {
 
   // ========== TELA DE ACUSAÇÃO EM ANDAMENTO ==========
   if (accusation && gameState) {
-    const isAccuser = accusation.accuserId === socket?.id;
-    const isAccused = accusation.accusedId === socket?.id;
+    const isAccuser = accusation.accuserId === playerId;
+    const isAccused = accusation.accusedId === playerId;
     const isSpy = gameState.isSpy;
-    const canVote = !isAccused && !isSpy && !accusation.votes?.[socket?.id];
-    const hasVoted = accusation.votes?.[socket?.id] !== undefined;
+    const canVote = !isAccused && !isSpy && !accusation.votes?.[playerId];
+    const hasVoted = accusation.votes?.[playerId] !== undefined;
     
     return (
       <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
@@ -549,7 +591,7 @@ export const GameRoom = ({ socket }) => {
                 
                 <div className="space-y-2">
                   {users.map((user) => {
-                    const isMe = user.id === socket?.id;
+                    const isMe = user.id === playerId;
                     const canAccuse = !gameState.isSpy && !isMe; // Apenas agentes podem acusar, não a si mesmos
                     
                     return (
@@ -567,6 +609,11 @@ export const GameRoom = ({ socket }) => {
                           </span>
                           {isMe && (
                             <span className="text-[#01DEB2] text-xs">(Você)</span>
+                          )}
+                          {user.connected === false && (
+                            <Badge variant="outline" className="text-xs text-zinc-500 border-zinc-600">
+                              Desconectado
+                            </Badge>
                           )}
                           {/* Mostrar pontuação */}
                           <Badge variant="outline" className="text-xs ml-1">
@@ -735,7 +782,7 @@ export const GameRoom = ({ socket }) => {
                   <div 
                     key={user.id} 
                     className={`p-3 sm:p-4 rounded-lg border transition-colors ${
-                      user.id === socket?.id 
+                      user.id === playerId 
                         ? 'bg-[#01DEB2]/10 border-[#01DEB2]/30' 
                         : 'bg-zinc-800/50 border-zinc-700 hover:bg-zinc-800'
                     }`}
@@ -743,8 +790,13 @@ export const GameRoom = ({ socket }) => {
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium text-base sm:text-lg text-zinc-100 flex items-center gap-1 sm:gap-2 flex-wrap break-words min-w-0">
                         <span className="break-all">{user.name}</span>
-                        {user.id === socket?.id && (
+                        {user.id === playerId && (
                           <span className="text-[#01DEB2] font-semibold text-sm">(Você)</span>
+                        )}
+                        {user.connected === false && (
+                          <Badge variant="outline" className="text-xs text-zinc-500 border-zinc-600">
+                            Desconectado
+                          </Badge>
                         )}
                       </span>
                       <div className="flex items-center gap-2 shrink-0">
@@ -797,7 +849,7 @@ export const GameRoom = ({ socket }) => {
               </div>
             )}
 
-            {users.length < 3 && (
+            {users.filter(u => u.connected !== false).length < 3 && (
               <div className="p-3 sm:p-4 bg-zinc-800/50 rounded-lg border border-zinc-700 text-center">
                 <p className="text-sm sm:text-base text-zinc-400">
                   <MapPin className="w-4 h-4 inline mr-2" />
@@ -806,7 +858,7 @@ export const GameRoom = ({ socket }) => {
               </div>
             )}
 
-            {isHost && users.length >= 3 && (
+            {isHost && users.filter(u => u.connected !== false).length >= 3 && (
               <Button 
                 onClick={handleStartGame}
                 className="w-full text-base sm:text-lg py-5 sm:py-6"

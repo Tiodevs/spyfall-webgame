@@ -7,9 +7,8 @@ require('dotenv').config();
 const app = express();
 const httpServer = createServer(app);
 
-// Configuração do Socket.io com CORS
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',') 
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
   : ['http://localhost:5173', 'http://localhost:3000'];
 
 const io = new Server(httpServer, {
@@ -21,20 +20,11 @@ const io = new Server(httpServer, {
 });
 
 const port = process.env.PORT || 3000;
+const GRACE_PERIOD_MS = 90 * 1000;
+const GAME_DURATION = 6 * 60 * 1000;
 
-// Middleware CORS para Express
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true
-}));
-
-app.use(express.json());
-
-// Armazenamento em memória das salas
-// Estrutura: { roomCode: { code: string, users: [{ id: string, socketId: string }], createdAt: Date } }
 const rooms = new Map();
 
-// Lista de locais para o jogo Spyfall
 const LOCATIONS = [
   { id: 1, name: 'Aeroporto', icon: '✈️' },
   { id: 2, name: 'Banco', icon: '🏦' },
@@ -62,306 +52,691 @@ const LOCATIONS = [
   { id: 24, name: 'Parque de Diversões', icon: '🎡' },
 ];
 
-// Função auxiliar para gerar código de sala (4 letras maiúsculas)
 function generateRoomCode() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   let code = '';
   for (let i = 0; i < 4; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  // Verifica se o código já existe
   if (rooms.has(code)) {
     return generateRoomCode();
   }
   return code;
 }
 
-// Função auxiliar para obter lista de salas
 function getRoomsList() {
   return Array.from(rooms.values()).map(room => ({
     code: room.code,
-    userCount: room.users.length,
+    userCount: room.users.filter(u => u.connected).length,
     createdAt: room.createdAt
   }));
 }
 
-// API endpoint para listar salas
+function validateUserName(userName) {
+  if (!userName || userName.trim().length === 0) {
+    return 'Nome de usuário é obrigatório';
+  }
+  if (userName.trim().length < 2 || userName.trim().length > 20) {
+    return 'Nome deve ter entre 2 e 20 caracteres';
+  }
+  return null;
+}
+
+function serializeUser(user, room) {
+  return {
+    playerId: user.playerId,
+    id: user.playerId,
+    socketId: user.socketId,
+    name: user.name,
+    isHost: room.hostId === user.playerId,
+    connected: user.connected,
+    joinedAt: user.joinedAt
+  };
+}
+
+function serializeUsers(room) {
+  return room.users.map(u => serializeUser(u, room));
+}
+
+function findUserBySocket(room, socketId) {
+  return room.users.find(u => u.socketId === socketId);
+}
+
+function findUserByPlayerId(room, playerId) {
+  return room.users.find(u => u.playerId === playerId);
+}
+
+function getPlayerIdFromSocket(room, socketId) {
+  return findUserBySocket(room, socketId)?.playerId;
+}
+
+function getConnectedUsers(room) {
+  return room.users.filter(u => u.connected);
+}
+
+function getConnectedCount(room) {
+  return getConnectedUsers(room).length;
+}
+
+function clearGameTimer(room) {
+  if (room.gameTimer) {
+    clearTimeout(room.gameTimer);
+    room.gameTimer = null;
+  }
+}
+
+function cancelDisconnectTimer(room, playerId) {
+  if (room.disconnectTimers?.[playerId]) {
+    clearTimeout(room.disconnectTimers[playerId]);
+    delete room.disconnectTimers[playerId];
+  }
+}
+
+function migrateHost(room) {
+  const connected = getConnectedUsers(room).sort(
+    (a, b) => new Date(a.joinedAt) - new Date(b.joinedAt)
+  );
+  room.hostId = connected.length > 0 ? connected[0].playerId : null;
+}
+
+function buildRoomSync(room, playerId) {
+  const gs = room.gameState;
+  let game = null;
+
+  if (gs?.isPlaying) {
+    const isSpy = gs.spyId === playerId;
+    game = {
+      isPlaying: true,
+      startedAt: gs.startedAt,
+      duration: gs.duration,
+      playersCount: getConnectedCount(room),
+      isSpy,
+      location: isSpy ? null : gs.location,
+      accusation: gs.accusation
+        ? {
+            accuserId: gs.accusation.accuserId,
+            accuserName: room.users.find(u => u.playerId === gs.accusation.accuserId)?.name,
+            accusedId: gs.accusation.accusedId,
+            accusedName: room.users.find(u => u.playerId === gs.accusation.accusedId)?.name,
+            votes: { ...gs.accusation.votes }
+          }
+        : null,
+      finalVoting: gs.finalVoting?.isActive
+        ? {
+            isActive: true,
+            votesCount: Object.keys(gs.finalVoting.votes).length,
+            totalPlayers: getConnectedCount(room),
+            myVote: gs.finalVoting.votes[playerId] ?? null
+          }
+        : null
+    };
+  }
+
+  return {
+    roomCode: room.code,
+    users: serializeUsers(room),
+    hostId: room.hostId,
+    scores: { ...room.scores },
+    game
+  };
+}
+
+function emitRoomSync(targetSocket, room, playerId) {
+  targetSocket.emit('room-sync', buildRoomSync(room, playerId));
+}
+
+function broadcastRoomState(room, roomCode) {
+  room.users.forEach(user => {
+    if (user.connected && user.socketId) {
+      const sock = io.sockets.sockets.get(user.socketId);
+      if (sock) {
+        emitRoomSync(sock, room, user.playerId);
+      }
+    }
+  });
+}
+
+function getAccusationVoteStats(room, accusation) {
+  const agentsWhoCanVote = room.users.filter(
+    u =>
+      u.connected &&
+      u.playerId !== accusation.accusedId &&
+      u.playerId !== room.gameState.spyId
+  );
+  const totalVotesNeeded = agentsWhoCanVote.length;
+  const currentVotes = Object.keys(accusation.votes).length;
+  return { agentsWhoCanVote, totalVotesNeeded, currentVotes };
+}
+
+function tryResolveAccusation(room, roomCode) {
+  const accusation = room.gameState?.accusation;
+  if (!accusation) return;
+
+  const { totalVotesNeeded, currentVotes } = getAccusationVoteStats(room, accusation);
+
+  if (currentVotes < totalVotesNeeded) return;
+
+  const votesInFavor = Object.values(accusation.votes).filter(v => v === true).length;
+  const allAgree = votesInFavor === totalVotesNeeded;
+
+  if (allAgree) {
+    const accusedIsSpy = accusation.accusedId === room.gameState.spyId;
+    clearGameTimer(room);
+
+    if (accusedIsSpy) {
+      room.users.forEach(user => {
+        if (
+          user.playerId !== room.gameState.spyId &&
+          user.playerId !== accusation.accuserId &&
+          accusation.votes[user.playerId] === true
+        ) {
+          room.scores[user.playerId] = (room.scores[user.playerId] || 0) + 1;
+        }
+      });
+      room.scores[accusation.accuserId] = (room.scores[accusation.accuserId] || 0) + 2;
+    } else {
+      room.scores[room.gameState.spyId] = (room.scores[room.gameState.spyId] || 0) + 2;
+    }
+
+    endGame(room, roomCode, 'accusation', {
+      accusedId: accusation.accusedId,
+      accusedName: room.users.find(u => u.playerId === accusation.accusedId)?.name,
+      accusedWasSpy: accusedIsSpy,
+      accuserId: accusation.accuserId,
+      accuserName: room.users.find(u => u.playerId === accusation.accuserId)?.name
+    });
+  } else {
+    room.gameState.accusation = null;
+    io.to(roomCode).emit('accusation-failed', {
+      votesInFavor,
+      votesNeeded: totalVotesNeeded,
+      message: 'Acusação rejeitada. O jogo continua.'
+    });
+  }
+}
+
+function tryCompleteFinalVoting(room, roomCode) {
+  const finalVoting = room.gameState?.finalVoting;
+  if (!finalVoting?.isActive) return;
+
+  const eligibleVoters = getConnectedUsers(room);
+  const votesFromEligible = eligibleVoters.filter(
+    u => finalVoting.votes[u.playerId] !== undefined
+  ).length;
+
+  if (votesFromEligible < eligibleVoters.length) return;
+
+  const spyId = room.gameState.spyId;
+  const votesResult = {};
+
+  Object.entries(finalVoting.votes).forEach(([voterId, targetId]) => {
+    if (targetId === spyId) {
+      room.scores[voterId] = (room.scores[voterId] || 0) + 1;
+      votesResult[voterId] = { votedCorrectly: true };
+    } else {
+      votesResult[voterId] = { votedCorrectly: false };
+    }
+  });
+
+  endGame(room, roomCode, 'final-vote', { votesResult });
+}
+
+function endGame(room, roomCode, reason, extra = {}) {
+  clearGameTimer(room);
+  const gameState = room.gameState;
+  room.gameState = null;
+
+  const spyUser = room.users.find(u => u.playerId === gameState?.spyId);
+
+  io.to(roomCode).emit('game-ended', {
+    roomCode,
+    spyId: gameState?.spyId,
+    spyName: spyUser?.name,
+    location: gameState?.location,
+    reason,
+    scores: room.scores,
+    ...extra
+  });
+}
+
+function handleAccusationOnPlayerRemoval(room, roomCode, removedPlayerId) {
+  const accusation = room.gameState?.accusation;
+  if (!accusation) return;
+
+  if (
+    accusation.accuserId === removedPlayerId ||
+    accusation.accusedId === removedPlayerId
+  ) {
+    room.gameState.accusation = null;
+    io.to(roomCode).emit('accusation-cancelled', {
+      message: 'Acusação cancelada (jogador saiu da sala).'
+    });
+    return;
+  }
+
+  delete accusation.votes[removedPlayerId];
+  tryResolveAccusation(room, roomCode);
+}
+
+function deleteRoom(room, roomCode) {
+  clearGameTimer(room);
+  if (room.disconnectTimers) {
+    Object.values(room.disconnectTimers).forEach(t => clearTimeout(t));
+  }
+  rooms.delete(roomCode);
+}
+
+function removePlayerFromRoom(
+  room,
+  roomCode,
+  playerId,
+  { skipSocketLeave = false, spyLeaveReason = 'spy-left' } = {}
+) {
+  const userIndex = room.users.findIndex(u => u.playerId === playerId);
+  if (userIndex === -1) return;
+
+  const user = room.users[userIndex];
+  cancelDisconnectTimer(room, playerId);
+
+  const wasSpy =
+    room.gameState?.isPlaying && room.gameState.spyId === playerId;
+  const spyNameForEnd = wasSpy ? user.name : undefined;
+  const wasHost = room.hostId === playerId;
+
+  if (room.gameState?.finalVoting?.votes) {
+    delete room.gameState.finalVoting.votes[playerId];
+  }
+
+  handleAccusationOnPlayerRemoval(room, roomCode, playerId);
+
+  room.users.splice(userIndex, 1);
+
+  if (!skipSocketLeave && user.socketId) {
+    const sock = io.sockets.sockets.get(user.socketId);
+    if (sock) {
+      sock.leave(roomCode);
+      delete sock.data.roomCode;
+      delete sock.data.playerId;
+    }
+  }
+
+  if (wasHost) {
+    migrateHost(room);
+  }
+
+  if (room.users.length === 0) {
+    deleteRoom(room, roomCode);
+    io.emit('rooms-updated', getRoomsList());
+    return;
+  }
+
+  if (wasSpy && room.gameState?.isPlaying) {
+    endGame(room, roomCode, spyLeaveReason, { spyName: spyNameForEnd });
+    io.emit('rooms-updated', getRoomsList());
+    return;
+  }
+
+  tryCompleteFinalVoting(room, roomCode);
+
+  const payload = {
+    playerId,
+    users: serializeUsers(room),
+    hostId: room.hostId,
+    scores: room.scores,
+    playersCount: getConnectedCount(room),
+    gameActive: !!room.gameState?.isPlaying
+  };
+
+  io.to(roomCode).emit('user-left', payload);
+  io.emit('rooms-updated', getRoomsList());
+}
+
+function scheduleDisconnectRemoval(room, roomCode, playerId) {
+  if (!room.disconnectTimers) {
+    room.disconnectTimers = {};
+  }
+  cancelDisconnectTimer(room, playerId);
+
+  room.disconnectTimers[playerId] = setTimeout(() => {
+    delete room.disconnectTimers[playerId];
+    const current = findUserByPlayerId(room, playerId);
+    if (!current || current.connected) return;
+
+    removePlayerFromRoom(room, roomCode, playerId, {
+      skipSocketLeave: true,
+      spyLeaveReason: 'spy-disconnected'
+    });
+  }, GRACE_PERIOD_MS);
+}
+
+function attachUserToSocket(socket, room, roomCode, user) {
+  if (user.socketId && user.socketId !== socket.id) {
+    const oldSocket = io.sockets.sockets.get(user.socketId);
+    if (oldSocket) {
+      oldSocket.emit('error', { message: 'Sessão aberta em outro dispositivo' });
+      oldSocket.leave(roomCode);
+      delete oldSocket.data.roomCode;
+      delete oldSocket.data.playerId;
+    }
+  }
+
+  user.socketId = socket.id;
+  user.connected = true;
+  user.disconnectedAt = null;
+  user.name = user.name; // preserve; updated on join if needed
+
+  cancelDisconnectTimer(room, user.playerId);
+  socket.join(roomCode);
+  socket.data.roomCode = roomCode;
+  socket.data.playerId = user.playerId;
+}
+
+function addOrRejoinUser(socket, room, roomCode, playerId, userName) {
+  const nameError = validateUserName(userName);
+  if (nameError) {
+    socket.emit('error', { message: nameError });
+    return false;
+  }
+
+  const trimmedName = userName.trim();
+  let user = findUserByPlayerId(room, playerId);
+
+  if (user) {
+    if (user.connected && user.socketId !== socket.id) {
+      const existingSocket = findUserBySocket(room, socket.id);
+      if (existingSocket && existingSocket.playerId !== playerId) {
+        socket.emit('error', { message: 'Você já está nesta sala com outra sessão' });
+        return false;
+      }
+    }
+    user.name = trimmedName;
+    attachUserToSocket(socket, room, roomCode, user);
+    return true;
+  }
+
+  if (room.gameState?.isPlaying) {
+    socket.emit('error', { message: 'Partida em andamento. Não é possível entrar agora.' });
+    return false;
+  }
+
+  const alreadyConnected = room.users.some(
+    u => u.connected && u.socketId === socket.id
+  );
+  if (alreadyConnected) {
+    socket.emit('error', { message: 'Você já está nesta sala' });
+    return false;
+  }
+
+  if (!room.hostId) {
+    room.hostId = playerId;
+  }
+
+  user = {
+    playerId,
+    socketId: socket.id,
+    name: trimmedName,
+    connected: true,
+    disconnectedAt: null,
+    joinedAt: new Date()
+  };
+  room.users.push(user);
+
+  if (!(playerId in room.scores)) {
+    room.scores[playerId] = 0;
+  }
+
+  attachUserToSocket(socket, room, roomCode, user);
+  return true;
+}
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
+
+app.use(express.json());
+
 app.get('/api/rooms', (req, res) => {
   res.json(getRoomsList());
 });
 
-// Health check endpoint
 app.get('/', (req, res) => {
-  res.json({ 
+  res.json({
     message: 'Spyfall Backend API',
     status: 'running',
     rooms: rooms.size
   });
 });
 
-// Socket.io connection handler
 io.on('connection', (socket) => {
   console.log(`Usuário conectado: ${socket.id}`);
 
-  // Criar nova sala
   socket.on('create-room', () => {
     const roomCode = generateRoomCode();
     const room = {
       code: roomCode,
       users: [],
-      hostId: socket.id,
+      hostId: null,
       createdAt: new Date(),
-      scores: {}, // Placar: { odId: pontos }
+      scores: {},
       gameState: null,
-      gameTimer: null
+      gameTimer: null,
+      disconnectTimers: {}
     };
     rooms.set(roomCode, room);
-    
-    console.log(`Sala criada: ${roomCode} (host: ${socket.id})`);
-    
-    // Retorna o código da sala para o criador
-    socket.emit('room-created', { roomCode, hostId: socket.id });
-    
-    // Notifica todos os clientes conectados sobre a nova sala
+
+    console.log(`Sala criada: ${roomCode}`);
+    socket.emit('room-created', { roomCode });
     io.emit('rooms-updated', getRoomsList());
   });
 
-  // Entrar em uma sala
-  socket.on('join-room', ({ roomCode, userName }) => {
+  socket.on('join-room', ({ roomCode, userName, playerId }) => {
     const room = rooms.get(roomCode);
-    
+
     if (!room) {
       socket.emit('error', { message: 'Sala não encontrada' });
       return;
     }
-    
-    // Validação do nome
-    if (!userName || userName.trim().length === 0) {
-      socket.emit('error', { message: 'Nome de usuário é obrigatório' });
+
+    if (!playerId) {
+      socket.emit('error', { message: 'Identificador de jogador inválido' });
       return;
     }
 
-    if (userName.trim().length < 2 || userName.trim().length > 20) {
-      socket.emit('error', { message: 'Nome deve ter entre 2 e 20 caracteres' });
+    const isNewJoin = !findUserByPlayerId(room, playerId);
+    if (!addOrRejoinUser(socket, room, roomCode, playerId, userName)) {
       return;
     }
-    
-    // Verifica se o usuário já está na sala
-    const userExists = room.users.find(u => u.socketId === socket.id);
-    if (userExists) {
-      socket.emit('error', { message: 'Você já está nesta sala' });
-      return;
+
+    console.log(`Jogador ${playerId} entrou/reentrou na sala ${roomCode}`);
+
+    emitRoomSync(socket, room, playerId);
+
+    if (isNewJoin) {
+      socket.to(roomCode).emit('user-joined', {
+        playerId,
+        users: serializeUsers(room),
+        hostId: room.hostId,
+        scores: room.scores,
+        playersCount: getConnectedCount(room)
+      });
+    } else {
+      socket.to(roomCode).emit('player-reconnected', {
+        playerId,
+        users: serializeUsers(room),
+        hostId: room.hostId,
+        scores: room.scores
+      });
     }
-    
-    // Adiciona usuário à sala
-    const user = {
-      id: socket.id,
-      socketId: socket.id,
-      name: userName.trim(),
-      isHost: room.hostId === socket.id,
-      joinedAt: new Date()
-    };
-    room.users.push(user);
-    
-    // Inicializa pontuação do jogador se não existir
-    if (!(socket.id in room.scores)) {
-      room.scores[socket.id] = 0;
-    }
-    
-    // Adiciona o socket à room do Socket.io
-    socket.join(roomCode);
-    
-    console.log(`Usuário ${socket.id} entrou na sala ${roomCode}`);
-    
-    // Notifica o usuário que entrou com sucesso
-    socket.emit('joined-room', { 
-      roomCode, 
-      users: room.users,
-      hostId: room.hostId,
-      scores: room.scores
-    });
-    
-    // Notifica todos os usuários da sala sobre o novo membro
-    io.to(roomCode).emit('user-joined', { 
-      userId: socket.id, 
-      users: room.users,
-      hostId: room.hostId,
-      scores: room.scores
-    });
-    
-    // Atualiza lista de salas para todos
+
     io.emit('rooms-updated', getRoomsList());
   });
 
-  // Iniciar partida (apenas host pode fazer isso)
+  socket.on('rejoin-room', ({ roomCode, userName, playerId }) => {
+    const room = rooms.get(roomCode);
+
+    if (!room) {
+      socket.emit('error', { message: 'Sala não encontrada' });
+      return;
+    }
+
+    if (!playerId) {
+      socket.emit('error', { message: 'Identificador de jogador inválido' });
+      return;
+    }
+
+    const user = findUserByPlayerId(room, playerId);
+    if (!user) {
+      socket.emit('error', { message: 'Você não está nesta sala' });
+      return;
+    }
+
+    if (!addOrRejoinUser(socket, room, roomCode, playerId, userName || user.name)) {
+      return;
+    }
+
+    console.log(`Jogador ${playerId} reentrou na sala ${roomCode}`);
+    emitRoomSync(socket, room, playerId);
+
+    socket.to(roomCode).emit('player-reconnected', {
+      playerId,
+      users: serializeUsers(room),
+      hostId: room.hostId,
+      scores: room.scores
+    });
+  });
+
+  socket.on('leave-room', ({ roomCode } = {}) => {
+    const code = roomCode || socket.data.roomCode;
+    const playerId = socket.data.playerId;
+
+    if (!code || !playerId) return;
+
+    const room = rooms.get(code);
+    if (!room) return;
+
+    removePlayerFromRoom(room, code, playerId);
+  });
+
   socket.on('start-game', ({ roomCode }) => {
     const room = rooms.get(roomCode);
-    
+
     if (!room) {
       socket.emit('error', { message: 'Sala não encontrada' });
       return;
     }
-    
-    // Verifica se é o host
-    if (room.hostId !== socket.id) {
+
+    const playerId = getPlayerIdFromSocket(room, socket.id);
+    if (room.hostId !== playerId) {
       socket.emit('error', { message: 'Apenas o host pode iniciar a partida' });
       return;
     }
-    
-    // Verifica se há jogadores suficientes (mínimo 3)
-    if (room.users.length < 3) {
-      socket.emit('error', { message: 'São necessários pelo menos 3 jogadores' });
+
+    if (room.gameState?.isPlaying) {
+      socket.emit('error', { message: 'Já existe uma partida em andamento' });
       return;
     }
-    
-    // Sorteia o espião
-    const spyIndex = Math.floor(Math.random() * room.users.length);
-    const spyId = room.users[spyIndex].id;
-    
-    // Sorteia o local
+
+    const connectedUsers = getConnectedUsers(room);
+    if (connectedUsers.length < 3) {
+      socket.emit('error', { message: 'São necessários pelo menos 3 jogadores conectados' });
+      return;
+    }
+
+    const spyIndex = Math.floor(Math.random() * connectedUsers.length);
+    const spyId = connectedUsers[spyIndex].playerId;
+
     const locationIndex = Math.floor(Math.random() * LOCATIONS.length);
     const location = LOCATIONS[locationIndex];
-    
-    // Duração da partida em milissegundos (6 minutos)
-    const GAME_DURATION = 6 * 60 * 1000;
     const startedAt = Date.now();
-    
-    // Armazena estado do jogo na sala
+
     room.gameState = {
       isPlaying: true,
-      spyId: spyId,
-      location: location,
-      startedAt: startedAt,
+      spyId,
+      location,
+      startedAt,
       duration: GAME_DURATION,
-      // Sistema de acusação
-      accusation: null, // { accuserId, accusedId, votes: { odId: bool } }
-      // Votação final (quando tempo acaba)
-      finalVoting: null, // { votes: { odId: votedForId }, isActive: bool }
-      // Resultado do jogo
+      accusation: null,
+      finalVoting: null,
       gameEnded: false
     };
-    
-    // Timer para iniciar votação final automaticamente
+
     room.gameTimer = setTimeout(() => {
       if (room.gameState?.isPlaying && !room.gameState?.gameEnded) {
-        // Inicia votação final
         room.gameState.finalVoting = {
           votes: {},
           isActive: true
         };
-        
+
         console.log(`Tempo esgotado na sala ${roomCode} - Iniciando votação final`);
-        
+
         io.to(roomCode).emit('voting-started', {
           roomCode,
-          message: 'Tempo esgotado! Vote em quem você acha que é o espião.'
+          message: 'Tempo esgotado! Vote em quem você acha que é o espião.',
+          totalPlayers: getConnectedCount(room)
         });
       }
     }, GAME_DURATION);
-    
+
     console.log(`Partida iniciada na sala ${roomCode}. Espião: ${spyId}, Local: ${location.name}`);
-    
-    // Envia para cada jogador seu papel
-    room.users.forEach(user => {
-      const isSpy = user.id === spyId;
-      
-      io.to(user.socketId).emit('game-started', {
-        roomCode,
-        isSpy,
-        location: isSpy ? null : location,
-        playersCount: room.users.length,
-        startedAt: startedAt,
-        duration: GAME_DURATION,
-        scores: room.scores
-      });
-    });
+
+    broadcastRoomState(room, roomCode);
   });
 
-  // Encerrar partida
   socket.on('end-game', ({ roomCode }) => {
     const room = rooms.get(roomCode);
-    
+
     if (!room) {
       socket.emit('error', { message: 'Sala não encontrada' });
       return;
     }
-    
-    // Verifica se é o host
-    if (room.hostId !== socket.id) {
+
+    const playerId = getPlayerIdFromSocket(room, socket.id);
+    if (room.hostId !== playerId) {
       socket.emit('error', { message: 'Apenas o host pode encerrar a partida' });
       return;
     }
-    
-    // Limpa o timer se existir
-    if (room.gameTimer) {
-      clearTimeout(room.gameTimer);
-      room.gameTimer = null;
-    }
-    
-    // Limpa estado do jogo
-    const gameState = room.gameState;
-    room.gameState = null;
-    
-    console.log(`Partida encerrada na sala ${roomCode}`);
-    
-    // Notifica todos os jogadores
-    io.to(roomCode).emit('game-ended', {
-      roomCode,
-      spyId: gameState?.spyId,
-      spyName: room.users.find(u => u.id === gameState?.spyId)?.name,
-      location: gameState?.location,
-      reason: 'host',
-      scores: room.scores
-    });
+
+    endGame(room, roomCode, 'host');
   });
 
-  // ========== CHUTE DO ESPIÃO ==========
-  // O espião tenta adivinhar o local
   socket.on('spy-guess', ({ roomCode, locationId }) => {
     const room = rooms.get(roomCode);
-    
+
     if (!room || !room.gameState?.isPlaying) {
       socket.emit('error', { message: 'Partida não encontrada ou não está em andamento' });
       return;
     }
-    
-    // Verifica se é o espião
-    if (room.gameState.spyId !== socket.id) {
+
+    const playerId = getPlayerIdFromSocket(room, socket.id);
+    if (room.gameState.spyId !== playerId) {
       socket.emit('error', { message: 'Apenas o espião pode chutar o local' });
       return;
     }
-    
-    // Limpa timer
-    if (room.gameTimer) {
-      clearTimeout(room.gameTimer);
-      room.gameTimer = null;
-    }
-    
+
+    clearGameTimer(room);
+
     const guessedLocation = LOCATIONS.find(l => l.id === locationId);
     const correctLocation = room.gameState.location;
     const isCorrect = locationId === correctLocation.id;
-    
+
     if (isCorrect) {
-      // Espião acertou: +2 pontos para o espião
-      room.scores[socket.id] = (room.scores[socket.id] || 0) + 2;
-      console.log(`Espião acertou o local na sala ${roomCode}! +2 pontos`);
+      room.scores[playerId] = (room.scores[playerId] || 0) + 2;
     } else {
-      // Espião errou: +1 ponto para cada agente
       room.users.forEach(user => {
-        if (user.id !== room.gameState.spyId) {
-          room.scores[user.id] = (room.scores[user.id] || 0) + 1;
+        if (user.playerId !== room.gameState.spyId) {
+          room.scores[user.playerId] = (room.scores[user.playerId] || 0) + 1;
         }
       });
-      console.log(`Espião errou o local na sala ${roomCode}! +1 ponto para agentes`);
     }
-    
+
     const gameState = room.gameState;
     room.gameState = null;
-    
+
     io.to(roomCode).emit('game-ended', {
       roomCode,
       spyId: gameState.spyId,
-      spyName: room.users.find(u => u.id === gameState.spyId)?.name,
+      spyName: room.users.find(u => u.playerId === gameState.spyId)?.name,
       location: gameState.location,
       reason: 'spy-guess',
       spyGuessedLocation: guessedLocation,
@@ -370,288 +745,213 @@ io.on('connection', (socket) => {
     });
   });
 
-  // ========== SISTEMA DE ACUSAÇÃO ==========
-  // Qualquer jogador pode acusar outro (exceto a si mesmo)
   socket.on('start-accusation', ({ roomCode, accusedId }) => {
     const room = rooms.get(roomCode);
-    
+
     if (!room || !room.gameState?.isPlaying) {
       socket.emit('error', { message: 'Partida não encontrada ou não está em andamento' });
       return;
     }
-    
-    // Não pode acusar a si mesmo
-    if (accusedId === socket.id) {
+
+    const playerId = getPlayerIdFromSocket(room, socket.id);
+    if (!playerId) return;
+
+    if (accusedId === playerId) {
       socket.emit('error', { message: 'Você não pode acusar a si mesmo' });
       return;
     }
-    
-    // Verifica se já há uma acusação em andamento
+
     if (room.gameState.accusation) {
       socket.emit('error', { message: 'Já existe uma acusação em andamento' });
       return;
     }
-    
-    // Verifica se o acusado existe na sala
-    const accused = room.users.find(u => u.id === accusedId);
+
+    const accused = room.users.find(u => u.playerId === accusedId && u.connected);
     if (!accused) {
       socket.emit('error', { message: 'Jogador não encontrado' });
       return;
     }
-    
-    // Inicia acusação - todos os agentes (exceto o acusado) devem votar
+
     room.gameState.accusation = {
-      accuserId: socket.id,
-      accusedId: accusedId,
+      accuserId: playerId,
+      accusedId,
       votes: {}
     };
-    
-    // O acusador automaticamente vota a favor
-    room.gameState.accusation.votes[socket.id] = true;
-    
-    const accuser = room.users.find(u => u.id === socket.id);
-    
-    console.log(`Acusação iniciada na sala ${roomCode}: ${accuser?.name} acusou ${accused.name}`);
-    
+
+    room.gameState.accusation.votes[playerId] = true;
+
+    const accuser = findUserByPlayerId(room, playerId);
+
     io.to(roomCode).emit('accusation-started', {
-      accuserId: socket.id,
+      accuserId: playerId,
       accuserName: accuser?.name,
-      accusedId: accusedId,
+      accusedId,
       accusedName: accused.name,
-      votes: room.gameState.accusation.votes
+      votes: { ...room.gameState.accusation.votes }
     });
   });
 
-  // Votar em uma acusação (apenas agentes, exceto o acusado)
   socket.on('vote-accusation', ({ roomCode, vote }) => {
     const room = rooms.get(roomCode);
-    
+
     if (!room || !room.gameState?.isPlaying || !room.gameState?.accusation) {
       socket.emit('error', { message: 'Não há acusação em andamento' });
       return;
     }
-    
+
+    const playerId = getPlayerIdFromSocket(room, socket.id);
+    if (!playerId) return;
+
     const accusation = room.gameState.accusation;
-    
-    // Não pode votar se for o acusado
-    if (socket.id === accusation.accusedId) {
+
+    if (playerId === accusation.accusedId) {
       socket.emit('error', { message: 'O acusado não pode votar' });
       return;
     }
-    
-    // Espião não pode votar (só agentes votam)
-    if (socket.id === room.gameState.spyId) {
+
+    if (playerId === room.gameState.spyId) {
       socket.emit('error', { message: 'O espião não pode votar na acusação' });
       return;
     }
-    
-    // Registra o voto
-    accusation.votes[socket.id] = vote;
-    
-    // Calcula quantos agentes precisam votar (todos exceto o acusado e o espião)
-    const agentsWhoCanVote = room.users.filter(u => 
-      u.id !== accusation.accusedId && u.id !== room.gameState.spyId
-    );
-    const totalVotesNeeded = agentsWhoCanVote.length;
-    const currentVotes = Object.keys(accusation.votes).length;
-    
-    io.to(roomCode).emit('accusation-vote-update', {
-      odId: socket.id,
-      odName: room.users.find(u => u.id === socket.id)?.name,
-      vote: vote,
-      votesCount: currentVotes,
-      votesNeeded: totalVotesNeeded
-    });
-    
-    // Verifica se todos votaram
-    if (currentVotes >= totalVotesNeeded) {
-      // Conta votos a favor
-      const votesInFavor = Object.values(accusation.votes).filter(v => v === true).length;
-      const allAgree = votesInFavor === totalVotesNeeded;
-      
-      if (allAgree) {
-        // Todos concordam - verifica se o acusado é o espião
-        const accusedIsSpy = accusation.accusedId === room.gameState.spyId;
-        
-        // Limpa timer
-        if (room.gameTimer) {
-          clearTimeout(room.gameTimer);
-          room.gameTimer = null;
-        }
-        
-        if (accusedIsSpy) {
-          // Acusação correta! Agentes ganham pontos
-          room.users.forEach(user => {
-            // +1 ponto para agentes que votaram a favor (exceto o acusador, que ganha +2)
-            if (user.id !== room.gameState.spyId && user.id !== accusation.accuserId) {
-              if (accusation.votes[user.id] === true) {
-                room.scores[user.id] = (room.scores[user.id] || 0) + 1;
-              }
-            }
-          });
-          // +2 pontos para quem fez a acusação
-          room.scores[accusation.accuserId] = (room.scores[accusation.accuserId] || 0) + 2;
-          
-          console.log(`Acusação correta na sala ${roomCode}! Espião pego.`);
-        } else {
-          // Acusação errada - espião ganha 2 pontos
-          room.scores[room.gameState.spyId] = (room.scores[room.gameState.spyId] || 0) + 2;
-          
-          console.log(`Acusação errada na sala ${roomCode}! Agente inocente acusado.`);
-        }
-        
-        const gameState = room.gameState;
-        room.gameState = null;
-        
-        io.to(roomCode).emit('game-ended', {
-          roomCode,
-          spyId: gameState.spyId,
-          spyName: room.users.find(u => u.id === gameState.spyId)?.name,
-          location: gameState.location,
-          reason: 'accusation',
-          accusedId: accusation.accusedId,
-          accusedName: room.users.find(u => u.id === accusation.accusedId)?.name,
-          accusedWasSpy: accusedIsSpy,
-          accuserId: accusation.accuserId,
-          accuserName: room.users.find(u => u.id === accusation.accuserId)?.name,
-          scores: room.scores
-        });
-      } else {
-        // Nem todos concordam - acusação falha, jogo continua
-        room.gameState.accusation = null;
-        
-        console.log(`Acusação rejeitada na sala ${roomCode}`);
-        
-        io.to(roomCode).emit('accusation-failed', {
-          votesInFavor,
-          votesNeeded: totalVotesNeeded,
-          message: 'Acusação rejeitada. O jogo continua.'
-        });
-      }
+
+    const voter = findUserByPlayerId(room, playerId);
+    if (!voter?.connected) {
+      socket.emit('error', { message: 'Você precisa estar conectado para votar' });
+      return;
     }
+
+    accusation.votes[playerId] = vote;
+
+    const { totalVotesNeeded, currentVotes } = getAccusationVoteStats(room, accusation);
+
+    io.to(roomCode).emit('accusation-vote-update', {
+      playerId,
+      playerName: voter.name,
+      vote,
+      votesCount: currentVotes,
+      votesNeeded: totalVotesNeeded,
+      votes: { ...accusation.votes }
+    });
+
+    tryResolveAccusation(room, roomCode);
   });
 
-  // Cancelar acusação (apenas quem iniciou pode cancelar)
   socket.on('cancel-accusation', ({ roomCode }) => {
     const room = rooms.get(roomCode);
-    
+
     if (!room || !room.gameState?.accusation) {
       return;
     }
-    
-    if (room.gameState.accusation.accuserId !== socket.id) {
+
+    const playerId = getPlayerIdFromSocket(room, socket.id);
+    if (room.gameState.accusation.accuserId !== playerId) {
       socket.emit('error', { message: 'Apenas quem fez a acusação pode cancelar' });
       return;
     }
-    
+
     room.gameState.accusation = null;
-    
+
     io.to(roomCode).emit('accusation-cancelled', {
       message: 'Acusação cancelada'
     });
   });
 
-  // ========== VOTAÇÃO FINAL ==========
-  // Quando o tempo acaba, todos votam em quem acham que é o espião
   socket.on('final-vote', ({ roomCode, votedForId }) => {
     const room = rooms.get(roomCode);
-    
+
     if (!room || !room.gameState?.finalVoting?.isActive) {
       socket.emit('error', { message: 'Votação não está ativa' });
       return;
     }
-    
-    // Não pode votar em si mesmo
-    if (votedForId === socket.id) {
+
+    const playerId = getPlayerIdFromSocket(room, socket.id);
+    if (!playerId) return;
+
+    if (votedForId === playerId) {
       socket.emit('error', { message: 'Você não pode votar em si mesmo' });
       return;
     }
-    
-    // Verifica se o votado existe
-    const votedFor = room.users.find(u => u.id === votedForId);
+
+    const votedFor = room.users.find(u => u.playerId === votedForId && u.connected);
     if (!votedFor) {
       socket.emit('error', { message: 'Jogador não encontrado' });
       return;
     }
-    
-    // Registra o voto
-    room.gameState.finalVoting.votes[socket.id] = votedForId;
-    
-    const currentVotes = Object.keys(room.gameState.finalVoting.votes).length;
-    const totalPlayers = room.users.length;
-    
-    io.to(roomCode).emit('final-vote-update', {
-      odId: socket.id,
-      odName: room.users.find(u => u.id === socket.id)?.name,
-      votesCount: currentVotes,
-      totalPlayers: totalPlayers
-    });
-    
-    // Verifica se todos votaram
-    if (currentVotes >= totalPlayers) {
-      // Calcula pontos - quem votou no espião ganha 1 ponto
-      const spyId = room.gameState.spyId;
-      const votesResult = {};
-      
-      Object.entries(room.gameState.finalVoting.votes).forEach(([odId, votedForId]) => {
-        if (votedForId === spyId) {
-          room.scores[odId] = (room.scores[odId] || 0) + 1;
-          votesResult[odId] = { votedCorrectly: true };
-        } else {
-          votesResult[odId] = { votedCorrectly: false };
-        }
-      });
-      
-      const gameState = room.gameState;
-      room.gameState = null;
-      
-      console.log(`Votação final concluída na sala ${roomCode}`);
-      
-      io.to(roomCode).emit('game-ended', {
-        roomCode,
-        spyId: gameState.spyId,
-        spyName: room.users.find(u => u.id === gameState.spyId)?.name,
-        location: gameState.location,
-        reason: 'final-vote',
-        votesResult: votesResult,
-        scores: room.scores
-      });
+
+    const voter = findUserByPlayerId(room, playerId);
+    if (!voter?.connected) {
+      socket.emit('error', { message: 'Você precisa estar conectado para votar' });
+      return;
     }
+
+    room.gameState.finalVoting.votes[playerId] = votedForId;
+
+    const eligibleVoters = getConnectedUsers(room);
+    const votesFromEligible = eligibleVoters.filter(
+      u => room.gameState.finalVoting.votes[u.playerId] !== undefined
+    ).length;
+
+    io.to(roomCode).emit('final-vote-update', {
+      playerId,
+      playerName: voter.name,
+      votesCount: votesFromEligible,
+      totalPlayers: eligibleVoters.length
+    });
+
+    tryCompleteFinalVoting(room, roomCode);
   });
 
   socket.on('disconnect', () => {
     console.log(`Usuário desconectado: ${socket.id}`);
-    
-    // Remove o usuário de todas as salas
-    rooms.forEach((room, roomCode) => {
-      const userIndex = room.users.findIndex(u => u.socketId === socket.id);
-      
-      if (userIndex !== -1) {
-        room.users.splice(userIndex, 1);
-        console.log(`Usuário ${socket.id} removido da sala ${roomCode}`);
-        
-        // Se a sala ficou vazia, remove a sala
-        if (room.users.length === 0) {
-          // Limpa o timer se existir
-          if (room.gameTimer) {
-            clearTimeout(room.gameTimer);
-          }
-          rooms.delete(roomCode);
-          console.log(`Sala ${roomCode} removida (vazia)`);
-        } else {
-          // Notifica os usuários restantes na sala
-          io.to(roomCode).emit('user-left', { 
-            userId: socket.id, 
-            users: room.users,
+
+    const roomCode = socket.data.roomCode;
+    const playerId = socket.data.playerId;
+
+    if (!roomCode || !playerId) {
+      rooms.forEach((room, code) => {
+        const user = findUserBySocket(room, socket.id);
+        if (user) {
+          user.connected = false;
+          user.disconnectedAt = Date.now();
+          user.socketId = null;
+
+          io.to(code).emit('player-disconnected', {
+            playerId: user.playerId,
+            users: serializeUsers(room),
             hostId: room.hostId,
-            scores: room.scores
+            scores: room.scores,
+            playersCount: getConnectedCount(room)
           });
+
+          scheduleDisconnectRemoval(room, code, user.playerId);
         }
-        
-        // Atualiza lista de salas para todos
-        io.emit('rooms-updated', getRoomsList());
-      }
+      });
+      return;
+    }
+
+    const room = rooms.get(roomCode);
+    if (!room) return;
+
+    const user = findUserByPlayerId(room, playerId);
+    if (!user) return;
+
+    user.connected = false;
+    user.disconnectedAt = Date.now();
+    user.socketId = null;
+
+    delete socket.data.roomCode;
+    delete socket.data.playerId;
+
+    io.to(roomCode).emit('player-disconnected', {
+      playerId,
+      users: serializeUsers(room),
+      hostId: room.hostId,
+      scores: room.scores,
+      playersCount: getConnectedCount(room),
+      gameActive: !!room.gameState?.isPlaying
     });
+
+    scheduleDisconnectRemoval(room, roomCode, playerId);
   });
 });
 
