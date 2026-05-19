@@ -4,6 +4,9 @@ import { RoomProvider, useRoom } from './contexts/RoomContext';
 import { CreateRoom } from './components/CreateRoom';
 import { RoomsList } from './components/RoomsList';
 import { GameRoom } from './components/GameRoom';
+import { AppBackground } from './components/layout/AppBackground';
+import { AppHeader } from './components/layout/AppHeader';
+import { Sparkles } from 'lucide-react';
 
 function AppContent() {
   const { currentRoom, playerId, joinRoom, updateUsers, getSession } = useRoom();
@@ -34,45 +37,57 @@ function AppContent() {
   const showReconnectBanner = currentRoom && (!isConnected || isReconnecting);
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col font-sans antialiased">
-      <main className="flex-1 container max-w-3xl mx-auto px-4 py-6 sm:py-10 space-y-6 sm:space-y-8">
+    <div className="relative min-h-screen bg-black text-foreground">
+      <AppBackground />
 
-        {!currentRoom && (
-          <div className="text-center space-y-2">
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#01DEB2]">
-              Spyfall
-            </h1>
-            <p className="text-sm sm:text-base text-muted-foreground px-2">
-              Quem é o espião? Descubra antes que o tempo acabe.
-            </p>
-          </div>
-        )}
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-4xl flex-col px-4 pb-10 sm:px-6 lg:px-8">
+        <AppHeader isConnected={isConnected && !isReconnecting} />
 
-        {showReconnectBanner && (
-          <div className="rounded-md bg-yellow-500/15 p-3 sm:p-4 border border-yellow-500/20 text-yellow-500 text-xs sm:text-sm text-center animate-pulse">
-            Reconectando ao servidor...
-          </div>
-        )}
+        <main className="flex-1 space-y-8 sm:space-y-10">
+          {!currentRoom && (
+            <section className="animate-slide-up space-y-6 pt-2 sm:pt-6">
+              <div className="space-y-4">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-accent">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Jogo de dedução em tempo real
+                </div>
+                <h1 className="font-display text-4xl font-extrabold uppercase leading-[0.95] tracking-tight sm:text-5xl lg:text-6xl">
+                  <span className="text-white">Quem é o </span>
+                  <span className="text-gradient-accent">espião?</span>
+                </h1>
+                <p className="max-w-md text-base text-zinc-400 sm:text-lg">
+                  Descubra o local secreto antes que o tempo acabe — ou finja que sabe, se for você o infiltrado.
+                </p>
+              </div>
+            </section>
+          )}
 
-        {!currentRoom && !isConnected && (
-          <div className="rounded-md bg-yellow-500/15 p-3 sm:p-4 border border-yellow-500/20 text-yellow-500 text-xs sm:text-sm text-center animate-pulse">
-            Conectando ao servidor...
-          </div>
-        )}
+          {showReconnectBanner && (
+            <div className="glass-panel animate-pulse border-amber-500/20 bg-amber-500/10 p-4 text-center text-sm text-amber-200">
+              Reconectando ao servidor...
+            </div>
+          )}
 
-        {!currentRoom && isConnected && (
-          <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <CreateRoom socket={socket} playerId={playerId} onRoomJoined={handleRoomJoined} />
-            <RoomsList socket={socket} playerId={playerId} onRoomJoined={handleRoomJoined} />
-          </div>
-        )}
+          {!currentRoom && !isConnected && (
+            <div className="glass-panel animate-pulse p-4 text-center text-sm text-zinc-400">
+              Conectando ao servidor...
+            </div>
+          )}
 
-        {currentRoom && (
-          <div className="animate-in zoom-in-95 duration-300">
-            <GameRoom socket={socket} playerId={playerId} />
-          </div>
-        )}
-      </main>
+          {!currentRoom && isConnected && (
+            <div className="animate-slide-up space-y-6" style={{ animationDelay: '0.1s' }}>
+              <CreateRoom socket={socket} playerId={playerId} onRoomJoined={handleRoomJoined} />
+              <RoomsList socket={socket} playerId={playerId} onRoomJoined={handleRoomJoined} />
+            </div>
+          )}
+
+          {currentRoom && (
+            <div className="animate-fade-in">
+              <GameRoom socket={socket} playerId={playerId} />
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
