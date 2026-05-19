@@ -360,13 +360,13 @@ export const GameRoom = ({ socket, playerId }) => {
         <Card>
           <CardHeader className="text-center border-b border-white/10 p-4 sm:p-6">
             <div className="space-y-3">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-yellow-500/20 rounded-full flex items-center justify-center">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-yellow-500/20 rounded-sm flex items-center justify-center">
                 <Vote className="w-8 h-8 sm:w-10 sm:h-10 text-yellow-400" />
               </div>
               <CardTitle className="text-2xl sm:text-3xl font-bold text-yellow-400">
                 Votação Final!
               </CardTitle>
-              <p className="text-sm sm:text-base text-zinc-400">
+              <p className="text-sm sm:text-base text-muted">
                 O tempo acabou! Vote em quem você acha que é o espião.
               </p>
               <Badge variant="secondary" className="text-xs sm:text-sm">
@@ -378,15 +378,15 @@ export const GameRoom = ({ socket, playerId }) => {
           <CardContent className="p-4 sm:p-6">
             <div className="space-y-4">
               {myVote ? (
-                <div className="text-center p-4 bg-accent/10 border border-accent/30 rounded-lg">
+                <div className="text-center p-4 bg-accent/10 border border-accent/30 rounded-sm">
                   <p className="text-accent font-medium">
                     Você votou em {users.find(u => u.id === myVote)?.name}
                   </p>
-                  <p className="text-sm text-zinc-400 mt-1">Aguardando outros jogadores...</p>
+                  <p className="text-sm text-muted mt-1">Aguardando outros jogadores...</p>
                 </div>
               ) : (
                 <>
-                  <p className="text-center text-zinc-400 text-sm">Selecione um jogador para votar:</p>
+                  <p className="text-center text-muted text-sm">Selecione um jogador para votar:</p>
                   <div className="grid gap-2">
                     {users.filter(u => u.id !== playerId && u.connected !== false).map((user) => (
                       <Button
@@ -422,13 +422,13 @@ export const GameRoom = ({ socket, playerId }) => {
         <Card>
           <CardHeader className="text-center border-b border-white/10 p-4 sm:p-6">
             <div className="space-y-3">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-orange-500/20 rounded-full flex items-center justify-center">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-orange-500/20 rounded-sm flex items-center justify-center">
                 <AlertTriangle className="w-8 h-8 sm:w-10 sm:h-10 text-orange-400" />
               </div>
               <CardTitle className="text-xl sm:text-2xl font-bold text-orange-400">
                 Acusação em Andamento
               </CardTitle>
-              <p className="text-sm sm:text-base text-zinc-300">
+              <p className="text-sm sm:text-base text-muted">
                 <strong className="text-orange-400">{accusation.accuserName}</strong> acusou{' '}
                 <strong className="text-red-400">{accusation.accusedName}</strong> de ser o espião!
               </p>
@@ -443,28 +443,28 @@ export const GameRoom = ({ socket, playerId }) => {
           <CardContent className="p-4 sm:p-6">
             <div className="space-y-4">
               {isAccused && (
-                <div className="text-center p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <div className="text-center p-4 bg-red-500/10 border border-red-500/30 rounded-sm">
                   <p className="text-red-400 font-medium">Você foi acusado!</p>
-                  <p className="text-sm text-zinc-400 mt-1">Aguarde a votação dos outros jogadores.</p>
+                  <p className="text-sm text-muted mt-1">Aguarde a votação dos outros jogadores.</p>
                 </div>
               )}
               
               {isSpy && !isAccused && (
-                <div className="text-center p-4 bg-white/5 border border-white/10 rounded-lg">
-                  <p className="text-zinc-400">Aguardando votação dos agentes...</p>
+                <div className="text-center p-4 bg-white/5 border border-white/10 rounded-sm">
+                  <p className="text-muted">Aguardando votação dos agentes...</p>
                 </div>
               )}
               
               {hasVoted && !isAccused && !isSpy && (
-                <div className="text-center p-4 bg-accent/10 border border-accent/30 rounded-lg">
+                <div className="text-center p-4 bg-accent/10 border border-accent/30 rounded-sm">
                   <p className="text-accent font-medium">Você já votou!</p>
-                  <p className="text-sm text-zinc-400 mt-1">Aguardando outros jogadores...</p>
+                  <p className="text-sm text-muted mt-1">Aguardando outros jogadores...</p>
                 </div>
               )}
               
               {canVote && (
                 <div className="space-y-3">
-                  <p className="text-center text-zinc-400 text-sm">
+                  <p className="text-center text-muted text-sm">
                     Você concorda que {accusation.accusedName} é o espião?
                   </p>
                   <div className="grid grid-cols-2 gap-3">
@@ -523,7 +523,7 @@ export const GameRoom = ({ socket, playerId }) => {
                 <Badge variant="secondary" className="text-xs sm:text-sm px-3 sm:px-4 py-1">
                   Partida em Andamento
                 </Badge>
-                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 ${timerColor}`}>
+                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-sm bg-white/5 border border-white/10 ${timerColor}`}>
                   <Timer className="w-4 h-4" />
                   <span className="font-mono font-bold text-sm sm:text-base">
                     {formatTime(timeRemaining)}
@@ -533,33 +533,33 @@ export const GameRoom = ({ socket, playerId }) => {
               
               {gameState.isSpy ? (
                 <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-red-500/20 rounded-full flex items-center justify-center">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-red-500/20 rounded-sm flex items-center justify-center">
                     <EyeOff className="w-8 h-8 sm:w-10 sm:h-10 text-red-400" />
                   </div>
                   <CardTitle className="text-2xl sm:text-4xl font-bold text-red-400">
                     Você é o Espião!
                   </CardTitle>
-                  <p className="text-sm sm:text-base text-zinc-400 max-w-md mx-auto px-2">
+                  <p className="text-sm sm:text-base text-muted max-w-md mx-auto px-2">
                     Descubra o local fazendo perguntas aos outros jogadores. 
                     Não deixe que descubram que você é o espião!
                   </p>
                 </div>
               ) : (
                 <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-accent/20 rounded-full flex items-center justify-center">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-accent/20 rounded-sm flex items-center justify-center">
                     <Eye className="w-8 h-8 sm:w-10 sm:h-10 text-accent" />
                   </div>
                   <CardTitle className="text-2xl sm:text-4xl font-bold text-accent">
                     Você é Cidadão
                   </CardTitle>
-                  <div className="bg-white/5 rounded-lg p-4 sm:p-6 border border-white/10 max-w-sm mx-auto">
-                    <p className="text-xs sm:text-sm text-zinc-400 uppercase tracking-wider mb-2">O Local é:</p>
+                  <div className="bg-white/5 rounded-sm p-4 sm:p-6 border border-white/10 max-w-sm mx-auto">
+                    <p className="text-xs sm:text-sm text-muted uppercase tracking-wider mb-2">O Local é:</p>
                     <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
                       <span className="text-3xl sm:text-4xl">{gameState.location?.icon}</span>
-                      <span className="text-xl sm:text-2xl font-bold text-white break-words text-center">{gameState.location?.name}</span>
+                      <span className="text-xl sm:text-2xl font-bold text-foreground break-words text-center">{gameState.location?.name}</span>
                     </div>
                   </div>
-                  <p className="text-sm sm:text-base text-zinc-400 max-w-md mx-auto px-2">
+                  <p className="text-sm sm:text-base text-muted max-w-md mx-auto px-2">
                     Responda às perguntas sem revelar o local. 
                     Tente descobrir quem é o espião!
                   </p>
@@ -572,7 +572,7 @@ export const GameRoom = ({ socket, playerId }) => {
             <div className="space-y-4 sm:space-y-6">
               {/* Status */}
               {status && (
-                <div className="p-3 rounded-lg text-center text-sm font-medium bg-accent/10 border border-accent/30 text-accent">
+                <div className="p-3 rounded-sm text-center text-sm font-medium bg-accent/10 border border-accent/30 text-accent">
                   {status}
                 </div>
               )}
@@ -597,21 +597,21 @@ export const GameRoom = ({ socket, playerId }) => {
                     return (
                       <div 
                         key={user.id} 
-                        className={`p-3 sm:p-4 rounded-lg border flex items-center justify-between ${
+                        className={`p-3 sm:p-4 rounded-sm border flex items-center justify-between ${
                           isMe 
                             ? 'bg-accent/10 border-accent/30' 
                             : 'bg-white/5 border-white/10'
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm sm:text-base text-white">
+                          <span className="font-medium text-sm sm:text-base text-foreground">
                             {user.name}
                           </span>
                           {isMe && (
                             <span className="text-accent text-xs">(Você)</span>
                           )}
                           {user.connected === false && (
-                            <Badge variant="outline" className="text-xs text-zinc-500 border-zinc-600">
+                            <Badge variant="outline" className="text-xs text-muted border-white/15">
                               Desconectado
                             </Badge>
                           )}
@@ -646,7 +646,7 @@ export const GameRoom = ({ socket, playerId }) => {
                     <MapPin className="w-4 h-4 sm:w-5 sm:h-5" />
                     {gameState.isSpy ? 'Chutar Local' : 'Locais Possíveis'}
                   </h3>
-                  <span className="text-xs sm:text-sm text-zinc-400">
+                  <span className="text-xs sm:text-sm text-muted">
                     {gameState.isSpy ? 'Escolha para chutar' : 'Toque para riscar'}
                   </span>
                 </div>
@@ -664,7 +664,7 @@ export const GameRoom = ({ socket, playerId }) => {
                               handleSpyGuess(location.id);
                             }
                           }}
-                          className={`p-2 sm:p-3 rounded-lg border text-left transition-all ${
+                          className={`p-2 sm:p-3 rounded-sm border text-left transition-all ${
                             isCrossed
                               ? 'bg-white/[0.02] border-white/10/50 opacity-50'
                               : 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20 active:scale-95'
@@ -673,7 +673,7 @@ export const GameRoom = ({ socket, playerId }) => {
                           <div className="flex items-center gap-2">
                             <span className="text-lg sm:text-xl">{location.icon}</span>
                             <span className={`text-xs sm:text-sm font-medium ${
-                              isCrossed ? 'line-through text-zinc-500' : 'text-white'
+                              isCrossed ? 'line-through text-muted' : 'text-foreground'
                             }`}>
                               {location.name}
                             </span>
@@ -687,7 +687,7 @@ export const GameRoom = ({ socket, playerId }) => {
                       <button
                         key={location.id}
                         onClick={() => toggleCrossLocation(location.id)}
-                        className={`p-2 sm:p-3 rounded-lg border text-left transition-all ${
+                        className={`p-2 sm:p-3 rounded-sm border text-left transition-all ${
                           isCrossed
                             ? 'bg-white/[0.02] border-white/10/50 opacity-50'
                             : 'bg-white/5 border-white/10 hover:bg-white/10 active:scale-95'
@@ -695,8 +695,8 @@ export const GameRoom = ({ socket, playerId }) => {
                       >
                         <div className="flex items-center gap-2">
                           <span className="text-lg sm:text-xl">{location.icon}</span>
-                          <span className={`text-xs sm:text-sm font-medium text-white ${
-                            isCrossed ? 'line-through text-zinc-500' : ''
+                          <span className={`text-xs sm:text-sm font-medium text-foreground ${
+                            isCrossed ? 'line-through text-muted' : ''
                           }`}>
                             {location.name}
                           </span>
@@ -708,7 +708,7 @@ export const GameRoom = ({ socket, playerId }) => {
                 {crossedLocations.size > 0 && (
                   <button
                     onClick={() => setCrossedLocations(new Set())}
-                    className="mt-3 text-xs sm:text-sm text-zinc-400 hover:text-zinc-200 flex items-center gap-1 mx-auto"
+                    className="mt-3 text-xs sm:text-sm text-muted hover:text-foreground flex items-center gap-1 mx-auto"
                   >
                     <X className="w-3 h-3" />
                     Limpar todos ({crossedLocations.size} riscados)
@@ -738,12 +738,12 @@ export const GameRoom = ({ socket, playerId }) => {
       <Card>
         <CardHeader className="text-center border-b border-white/10 p-4 sm:p-6">
           <div className="space-y-2">
-            <p className="text-xs sm:text-sm text-zinc-400 uppercase tracking-wider">Código da Sala</p>
+            <p className="text-xs sm:text-sm text-muted uppercase tracking-wider">Código da Sala</p>
             <CardTitle className="text-3xl sm:text-5xl font-bold text-accent tracking-widest">
               {currentRoom}
             </CardTitle>
-            <p className="text-sm sm:text-base text-zinc-400">
-              Bem-vindo, <strong className="text-white">{userName}</strong>!
+            <p className="text-sm sm:text-base text-muted">
+              Bem-vindo, <strong className="text-foreground">{userName}</strong>!
             </p>
           </div>
         </CardHeader>
@@ -751,7 +751,7 @@ export const GameRoom = ({ socket, playerId }) => {
         <CardContent className="p-4 sm:p-6">
           <div className="space-y-4 sm:space-y-6">
             {status && (
-              <div className={`p-3 sm:p-4 rounded-lg text-center text-sm sm:text-base font-medium ${
+              <div className={`p-3 sm:p-4 rounded-sm text-center text-sm sm:text-base font-medium ${
                 status.includes('encerrada') 
                   ? 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
                   : status.includes('necessários')
@@ -781,20 +781,20 @@ export const GameRoom = ({ socket, playerId }) => {
                 users.map((user) => (
                   <div 
                     key={user.id} 
-                    className={`p-3 sm:p-4 rounded-lg border transition-colors ${
+                    className={`p-3 sm:p-4 rounded-sm border transition-colors ${
                       user.id === playerId 
                         ? 'bg-accent/10 border-accent/30' 
                         : 'bg-white/5 border-white/10 hover:bg-white/10'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-base sm:text-lg text-white flex items-center gap-1 sm:gap-2 flex-wrap break-words min-w-0">
+                      <span className="font-medium text-base sm:text-lg text-foreground flex items-center gap-1 sm:gap-2 flex-wrap break-words min-w-0">
                         <span className="break-all">{user.name}</span>
                         {user.id === playerId && (
                           <span className="text-accent font-semibold text-sm">(Você)</span>
                         )}
                         {user.connected === false && (
-                          <Badge variant="outline" className="text-xs text-zinc-500 border-zinc-600">
+                          <Badge variant="outline" className="text-xs text-muted border-white/15">
                             Desconectado
                           </Badge>
                         )}
@@ -821,7 +821,7 @@ export const GameRoom = ({ socket, playerId }) => {
 
             {/* Placar - mostra se houver pontuações */}
             {Object.values(scores).some(s => s > 0) && (
-              <div className="p-3 sm:p-4 bg-white/5 rounded-lg border border-white/10">
+              <div className="p-3 sm:p-4 bg-white/5 rounded-sm border border-white/10">
                 <h4 className="text-sm font-semibold flex items-center gap-2 mb-2 text-yellow-400">
                   <Trophy className="w-4 h-4" />
                   Placar
@@ -850,8 +850,8 @@ export const GameRoom = ({ socket, playerId }) => {
             )}
 
             {users.filter(u => u.connected !== false).length < 3 && (
-              <div className="p-3 sm:p-4 bg-white/5 rounded-lg border border-white/10 text-center">
-                <p className="text-sm sm:text-base text-zinc-400">
+              <div className="p-3 sm:p-4 bg-white/5 rounded-sm border border-white/10 text-center">
+                <p className="text-sm sm:text-base text-muted">
                   <MapPin className="w-4 h-4 inline mr-2" />
                   Aguardando mais jogadores... (mínimo 3)
                 </p>

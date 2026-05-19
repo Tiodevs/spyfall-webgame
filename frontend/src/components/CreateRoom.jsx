@@ -91,7 +91,7 @@ export const CreateRoom = ({ socket, playerId, onRoomJoined }) => {
           Criar Nova Sala
         </Button>
       </DialogTrigger>
-      <DialogContent className="border-white/10 bg-zinc-950/95 backdrop-blur-xl">
+      <DialogContent className="border-white/10 bg-background/95 backdrop-blur-xl">
         <DialogHeader>
           <DialogTitle className="font-display text-xl">Criar Nova Sala</DialogTitle>
           <DialogDescription>
@@ -114,7 +114,7 @@ export const CreateRoom = ({ socket, playerId, onRoomJoined }) => {
 
           {status && (
             <div
-              className={`rounded-lg p-3 text-center text-sm ${
+              className={`rounded-sm p-3 text-center text-sm ${
                 status.includes('caracteres')
                   ? 'border border-red-500/30 bg-red-500/10 text-red-400'
                   : 'border border-accent/30 bg-accent/10 text-accent'

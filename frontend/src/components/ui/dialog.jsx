@@ -16,7 +16,7 @@ const DialogOverlay = React.forwardRef(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/90 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-background/90 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props} />
@@ -34,7 +34,7 @@ const DialogContent = React.forwardRef(({ className, children, ...props }, ref) 
         // Mobile-first: posicionado no topo para não ser coberto pelo teclado iOS
         "fixed left-0 right-0 bottom-0 z-50 grid w-full gap-4 border-t bg-background p-4 shadow-lg duration-200",
         // Desktop: centralizado como antes
-        "sm:left-[50%] sm:right-auto sm:bottom-auto sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-lg sm:rounded-lg sm:border sm:p-6",
+        "sm:left-[50%] sm:right-auto sm:bottom-auto sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-lg sm:rounded-sm sm:border sm:p-6",
         // Animações mobile (slide up)
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
@@ -44,7 +44,7 @@ const DialogContent = React.forwardRef(({ className, children, ...props }, ref) 
         "sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%]",
         "sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95",
         // Mobile: rounded top corners
-        "rounded-t-2xl sm:rounded-lg",
+        "rounded-t-sm sm:rounded-sm",
         // Max height para scroll em mobile
         "max-h-[85vh] overflow-y-auto",
         className

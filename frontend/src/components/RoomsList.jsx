@@ -115,7 +115,7 @@ export const RoomsList = ({ socket, playerId, onRoomJoined }) => {
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
           {rooms.length === 0 ? (
-            <p className="py-10 text-center text-sm italic text-zinc-500">
+            <p className="py-10 text-center text-sm italic text-muted">
               Nenhuma sala disponível. Crie uma nova sala!
             </p>
           ) : (
@@ -123,13 +123,13 @@ export const RoomsList = ({ socket, playerId, onRoomJoined }) => {
               {rooms.map((room) => (
                 <div
                   key={room.code}
-                  className="group flex flex-col gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-4 transition-all hover:border-accent/20 hover:bg-white/[0.04] sm:flex-row sm:items-center sm:justify-between"
+                  className="group flex flex-col gap-3 rounded-sm border border-white/5 bg-white/[0.02] p-4 transition-all hover:border-accent/20 hover:bg-white/[0.04] sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="font-display text-lg font-bold tracking-widest text-accent">
                       {room.code}
                     </span>
-                    <span className="flex items-center gap-1 text-xs text-zinc-500">
+                    <span className="flex items-center gap-1 text-xs text-muted">
                       <Clock className="h-3 w-3" />
                       {new Date(room.createdAt).toLocaleTimeString('pt-BR', {
                         hour: '2-digit',
@@ -159,7 +159,7 @@ export const RoomsList = ({ socket, playerId, onRoomJoined }) => {
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="border-white/10 bg-zinc-950/95 backdrop-blur-xl">
+        <DialogContent className="border-white/10 bg-background/95 backdrop-blur-xl">
           <DialogHeader>
             <DialogTitle className="font-display text-xl">
               Entrar na Sala{' '}
@@ -184,7 +184,7 @@ export const RoomsList = ({ socket, playerId, onRoomJoined }) => {
             </div>
 
             {status && (
-              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-center text-sm text-red-400">
+              <div className="rounded-sm border border-red-500/30 bg-red-500/10 p-3 text-center text-sm text-red-400">
                 {status}
               </div>
             )}

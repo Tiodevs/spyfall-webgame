@@ -37,7 +37,7 @@ function AppContent() {
   const showReconnectBanner = currentRoom && (!isConnected || isReconnecting);
 
   return (
-    <div className="relative min-h-screen bg-black text-foreground">
+    <div className="relative min-h-screen bg-background text-foreground">
       <AppBackground />
 
       <div className="relative z-10 mx-auto flex min-h-screen max-w-4xl flex-col px-4 pb-10 sm:px-6 lg:px-8">
@@ -47,15 +47,15 @@ function AppContent() {
           {!currentRoom && (
             <section className="animate-slide-up space-y-6 pt-2 sm:pt-6">
               <div className="space-y-4">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-accent">
+                <div className="inline-flex items-center gap-2 rounded-sm border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-wider text-accent">
                   <Sparkles className="h-3.5 w-3.5" />
                   Jogo de dedução em tempo real
                 </div>
-                <h1 className="font-display text-4xl font-extrabold uppercase leading-[0.95] tracking-tight sm:text-5xl lg:text-6xl">
-                  <span className="text-white">Quem é o </span>
-                  <span className="text-gradient-accent">espião?</span>
+                <h1 className="font-display text-4xl font-bold uppercase leading-[0.95] tracking-tight sm:text-5xl lg:text-6xl">
+                  <span className="text-foreground">Quem é o </span>
+                  <span className="text-muted">espião?</span>
                 </h1>
-                <p className="max-w-md text-base text-zinc-400 sm:text-lg">
+                <p className="max-w-md text-base text-muted sm:text-lg">
                   Descubra o local secreto antes que o tempo acabe — ou finja que sabe, se for você o infiltrado.
                 </p>
               </div>
@@ -69,7 +69,7 @@ function AppContent() {
           )}
 
           {!currentRoom && !isConnected && (
-            <div className="glass-panel animate-pulse p-4 text-center text-sm text-zinc-400">
+            <div className="glass-panel animate-pulse p-4 text-center text-sm text-muted">
               Conectando ao servidor...
             </div>
           )}
