@@ -3,41 +3,25 @@ import { useRoom } from '../contexts/RoomContext';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Users, LogOut, Crown, Play, Eye, EyeOff, MapPin, X, Timer, Target, AlertTriangle, Vote, Trophy, ThumbsUp, ThumbsDown } from 'lucide-react';
-
-// Lista de todos os locais possíveis
-const ALL_LOCATIONS = [
-  { id: 1, name: 'Aeroporto', icon: '✈️' },
-  { id: 2, name: 'Banco', icon: '🏦' },
-  { id: 3, name: 'Praia', icon: '🏖️' },
-  { id: 4, name: 'Cassino', icon: '🎰' },
-  { id: 5, name: 'Circo', icon: '🎪' },
-  { id: 6, name: 'Hospital', icon: '🏥' },
-  { id: 7, name: 'Hotel', icon: '🏨' },
-  { id: 8, name: 'Escola', icon: '🏫' },
-  { id: 9, name: 'Restaurante', icon: '🍽️' },
-  { id: 10, name: 'Supermercado', icon: '🛒' },
-  { id: 11, name: 'Teatro', icon: '🎭' },
-  { id: 12, name: 'Museu', icon: '🏛️' },
-  { id: 13, name: 'Estádio de Futebol', icon: '⚽' },
-  { id: 14, name: 'Delegacia', icon: '🚔' },
-  { id: 15, name: 'Navio Cruzeiro', icon: '🚢' },
-  { id: 16, name: 'Spa', icon: '💆' },
-  { id: 17, name: 'Estação Espacial', icon: '🚀' },
-  { id: 18, name: 'Submarino', icon: '🛥️' },
-  { id: 19, name: 'Base Militar', icon: '🎖️' },
-  { id: 20, name: 'Igreja', icon: '⛪' },
-  { id: 21, name: 'Universidade', icon: '🎓' },
-  { id: 22, name: 'Fazenda', icon: '🌾' },
-  { id: 23, name: 'Estúdio de TV', icon: '📺' },
-  { id: 24, name: 'Parque de Diversões', icon: '🎡' },
-];
+import { Users, LogOut, Crown, Play, Eye, EyeOff, MapPin, X, Timer, Target, AlertTriangle, Vote, Trophy, ThumbsUp, ThumbsDown, UserCircle } from 'lucide-react';
+import { getLocationsByPack, DEFAULT_ROOM_SETTINGS } from '@shared/gameData';
+import { DEFAULT_ROOM_SETTINGS as QUEM_DEFAULTS } from '@shared/quemSouEu';
+import { GAME_TYPES, getGameById } from '@shared/catalog';
+import { RoomSettings } from './RoomSettings';
+import { QuemSouEuPlay } from './games/quem-sou-eu/QuemSouEuPlay';
+import { QuemSouEuSettings } from './games/quem-sou-eu/QuemSouEuSettings';
 
 export const GameRoom = ({ socket, playerId }) => {
-  const { currentRoom, userName, users, leaveRoom, updateUsers } = useRoom();
+  const { currentRoom, userName, users, leaveRoom, updateUsers, selectedGame } = useRoom();
   const [status, setStatus] = useState('');
   const [isHost, setIsHost] = useState(false);
-  const [gameState, setGameState] = useState(null); // { isSpy, location, playersCount, startedAt, duration }
+  const [gameState, setGameState] = useState(null);
+  const [gameType, setGameType] = useState(selectedGame || GAME_TYPES.SPYFALL);
+  const [roomSettings, setRoomSettings] = useState(() => (
+    selectedGame === GAME_TYPES.QUEM_SOU_EU
+      ? { ...QUEM_DEFAULTS }
+      : { ...DEFAULT_ROOM_SETTINGS }
+  ));
   const [crossedLocations, setCrossedLocations] = useState(new Set()); // IDs dos locais riscados
   const [timeRemaining, setTimeRemaining] = useState(null); // Tempo restante em segundos
   const [scores, setScores] = useState({}); // Placar: { odId: pontos }
@@ -104,11 +88,27 @@ export const GameRoom = ({ socket, playerId }) => {
     updateUsers(data.users);
     setIsHost(data.hostId === playerId);
     if (data.scores) setScores(data.scores);
+    if (data.gameType) setGameType(data.gameType);
+
+    if (data.settings) {
+      setRoomSettings(data.settings);
+    }
 
     if (data.game?.isPlaying) {
+      if (data.gameType === GAME_TYPES.QUEM_SOU_EU || data.game.gameType === GAME_TYPES.QUEM_SOU_EU) {
+        setGameState(data.game);
+        setAccusation(null);
+        setFinalVoting(null);
+        setMyVote(null);
+        return;
+      }
+
       setGameState({
         isSpy: data.game.isSpy,
+        spyCount: data.game.spyCount ?? 1,
         location: data.game.location,
+        role: data.game.role,
+        locationPack: data.game.locationPack,
         playersCount: data.game.playersCount,
         startedAt: data.game.startedAt,
         duration: data.game.duration
@@ -220,7 +220,6 @@ export const GameRoom = ({ socket, playerId }) => {
     };
 
     const handleGameEnded = (data) => {
-      // Limpa o timer
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
       }
@@ -229,33 +228,55 @@ export const GameRoom = ({ socket, playerId }) => {
       setAccusation(null);
       setFinalVoting(null);
       setMyVote(null);
-      setCrossedLocations(new Set()); // Limpa os locais riscados ao terminar
+      setCrossedLocations(new Set());
       if (data.scores) setScores(data.scores);
-      
-      // Monta mensagem de resultado
+
+      if (data.gameType === GAME_TYPES.QUEM_SOU_EU) {
+        setStatus(data.message || 'Partida encerrada. Identidades reveladas.');
+        setTimeout(() => setStatus(''), 10000);
+        return;
+      }
+
+      const spyNames = data.spyNames?.length
+        ? data.spyNames
+        : data.spyName
+          ? [data.spyName]
+          : [];
+      const spyLabel = spyNames.length > 1
+        ? `Os espiões eram ${spyNames.join(' e ')}`
+        : spyNames[0]
+          ? `O espião era ${spyNames[0]}`
+          : 'Partida encerrada';
+
       let reasonText = '';
       if (data.reason === 'spy-guess') {
         if (data.spyGuessCorrect) {
-          reasonText = `O espião (${data.spyName}) adivinhou o local corretamente! +2 pontos para o espião.`;
+          reasonText = `${data.spyName} adivinhou o local! ${spyLabel}. +2 pontos para o espião.`;
         } else {
-          reasonText = `O espião (${data.spyName}) errou o chute (tentou ${data.spyGuessedLocation?.name}). +1 ponto para todos os agentes.`;
+          reasonText = `${data.spyName} errou o chute (${data.spyGuessedLocation?.name}). ${spyLabel}. +1 para os agentes.`;
         }
       } else if (data.reason === 'accusation') {
         if (data.accusedWasSpy) {
-          reasonText = `Acusação correta! ${data.accuserName} identificou o espião (${data.spyName}). +1 para agentes, +2 extra para ${data.accuserName}.`;
+          reasonText = `Acusação correta! ${data.accuserName} pegou ${data.accusedName}. ${spyLabel}.`;
         } else {
-          reasonText = `Acusação errada! ${data.accusedName} era inocente. +2 pontos para o espião.`;
+          reasonText = `Acusação errada! ${data.accusedName} era inocente. ${spyLabel}. +2 para o(s) espião(ões).`;
         }
       } else if (data.reason === 'final-vote') {
-        reasonText = `Votação final encerrada! O espião era ${data.spyName}. +1 ponto para quem votou corretamente.`;
+        reasonText = `Votação final! ${spyLabel}. Local: ${data.location?.name}. +1 para quem acertou.`;
       } else if (data.reason === 'spy-disconnected' || data.reason === 'spy-left') {
-        reasonText = `O espião (${data.spyName}) saiu da partida. Local: ${data.location?.name}`;
+        reasonText = `${spyLabel}. Local: ${data.location?.name}`;
       } else {
-        reasonText = `Partida encerrada! O espião era ${data.spyName}. Local: ${data.location?.name}`;
+        reasonText = `${spyLabel}. Local: ${data.location?.name}`;
       }
-      
+
       setStatus(reasonText);
       setTimeout(() => setStatus(''), 10000);
+    };
+
+    const handleSpyCaught = (data) => {
+      setAccusation(null);
+      setStatus(data.message);
+      setTimeout(() => setStatus(''), 6000);
     };
 
     // Handlers de acusação
@@ -332,6 +353,7 @@ export const GameRoom = ({ socket, playerId }) => {
     socket.on('accusation-cancelled', handleAccusationCancelled);
     socket.on('voting-started', handleVotingStarted);
     socket.on('final-vote-update', handleFinalVoteUpdate);
+    socket.on('spy-caught', handleSpyCaught);
     socket.on('error', handleError);
 
     return () => {
@@ -347,11 +369,31 @@ export const GameRoom = ({ socket, playerId }) => {
       socket.off('accusation-cancelled', handleAccusationCancelled);
       socket.off('voting-started', handleVotingStarted);
       socket.off('final-vote-update', handleFinalVoteUpdate);
+      socket.off('spy-caught', handleSpyCaught);
       socket.off('error', handleError);
     };
   }, [socket, currentRoom, updateUsers, playerId]);
 
   if (!currentRoom) return null;
+
+  const minPlayers = getGameById(gameType)?.minPlayers ?? 3;
+  const connectedCount = users.filter(u => u.connected !== false).length;
+
+  if (gameState && gameType === GAME_TYPES.QUEM_SOU_EU) {
+    return (
+      <QuemSouEuPlay
+        socket={socket}
+        currentRoom={currentRoom}
+        playerId={playerId}
+        users={users}
+        scores={scores}
+        isHost={isHost}
+        gameState={gameState}
+        onEndGame={handleEndGame}
+        onLeave={handleLeaveRoom}
+      />
+    );
+  }
 
   // ========== TELA DE VOTAÇÃO FINAL ==========
   if (finalVoting?.isActive && gameState) {
@@ -506,7 +548,10 @@ export const GameRoom = ({ socket, playerId }) => {
 
   // Tela de jogo em andamento
   if (gameState) {
-    // Determina a cor do timer baseado no tempo restante
+    const packLocations = getLocationsByPack(gameState.locationPack || 'default').map(
+      ({ id, name, icon }) => ({ id, name, icon })
+    );
+
     const timerColor = timeRemaining !== null && timeRemaining <= 60 
       ? 'text-red-400' 
       : timeRemaining !== null && timeRemaining <= 120 
@@ -537,11 +582,12 @@ export const GameRoom = ({ socket, playerId }) => {
                     <EyeOff className="w-8 h-8 sm:w-10 sm:h-10 text-red-400" />
                   </div>
                   <CardTitle className="text-2xl sm:text-4xl font-bold text-red-400">
-                    Você é o Espião!
+                    {gameState.spyCount > 1 ? 'Você é um dos Espiões!' : 'Você é o Espião!'}
                   </CardTitle>
                   <p className="text-sm sm:text-base text-muted max-w-md mx-auto px-2">
-                    Descubra o local fazendo perguntas aos outros jogadores. 
-                    Não deixe que descubram que você é o espião!
+                    {gameState.spyCount > 1
+                      ? 'Há outro espião na sala — vocês não sabem quem é. Descubra o local sem ser pego.'
+                      : 'Descubra o local fazendo perguntas aos outros jogadores. Não deixe que descubram que você é o espião!'}
                   </p>
                 </div>
               ) : (
@@ -552,16 +598,26 @@ export const GameRoom = ({ socket, playerId }) => {
                   <CardTitle className="text-2xl sm:text-4xl font-bold text-accent">
                     Você é Cidadão
                   </CardTitle>
-                  <div className="bg-white/5 rounded-sm p-4 sm:p-6 border border-white/10 max-w-sm mx-auto">
-                    <p className="text-xs sm:text-sm text-muted uppercase tracking-wider mb-2">O Local é:</p>
-                    <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
-                      <span className="text-3xl sm:text-4xl">{gameState.location?.icon}</span>
-                      <span className="text-xl sm:text-2xl font-bold text-foreground break-words text-center">{gameState.location?.name}</span>
+                  <div className="bg-white/5 rounded-sm p-4 sm:p-6 border border-white/10 max-w-sm mx-auto space-y-4">
+                    <div>
+                      <p className="text-xs sm:text-sm text-muted uppercase tracking-wider mb-2">O Local é:</p>
+                      <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
+                        <span className="text-3xl sm:text-4xl">{gameState.location?.icon}</span>
+                        <span className="text-xl sm:text-2xl font-bold text-foreground break-words text-center">{gameState.location?.name}</span>
+                      </div>
                     </div>
+                    {gameState.role && (
+                      <div className="border-t border-white/10 pt-4">
+                        <p className="text-xs sm:text-sm text-muted uppercase tracking-wider mb-2">Seu cargo:</p>
+                        <p className="text-lg sm:text-xl font-bold text-accent flex items-center justify-center gap-2">
+                          <UserCircle className="h-5 w-5" />
+                          {gameState.role}
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <p className="text-sm sm:text-base text-muted max-w-md mx-auto px-2">
-                    Responda às perguntas sem revelar o local. 
-                    Tente descobrir quem é o espião!
+                    Use seu cargo nas respostas. Tente descobrir quem é o espião!
                   </p>
                 </div>
               )}
@@ -651,7 +707,7 @@ export const GameRoom = ({ socket, playerId }) => {
                   </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {ALL_LOCATIONS.map((location) => {
+                  {packLocations.map((location) => {
                     const isCrossed = crossedLocations.has(location.id);
                     
                     // Se for espião, mostra botões de chutar
@@ -738,7 +794,9 @@ export const GameRoom = ({ socket, playerId }) => {
       <Card>
         <CardHeader className="text-center border-b border-white/10 p-4 sm:p-6">
           <div className="space-y-2">
-            <p className="text-xs sm:text-sm text-muted uppercase tracking-wider">Código da Sala</p>
+            <p className="text-xs sm:text-sm text-muted uppercase tracking-wider">
+              {getGameById(gameType)?.name || 'Sala'} · Código
+            </p>
             <CardTitle className="text-3xl sm:text-5xl font-bold text-accent tracking-widest">
               {currentRoom}
             </CardTitle>
@@ -849,16 +907,34 @@ export const GameRoom = ({ socket, playerId }) => {
               </div>
             )}
 
-            {users.filter(u => u.connected !== false).length < 3 && (
+            {gameType === GAME_TYPES.QUEM_SOU_EU ? (
+              <QuemSouEuSettings
+                socket={socket}
+                roomCode={currentRoom}
+                isHost={isHost}
+                settings={roomSettings}
+                connectedCount={connectedCount}
+              />
+            ) : (
+              <RoomSettings
+                socket={socket}
+                roomCode={currentRoom}
+                isHost={isHost}
+                settings={roomSettings}
+                connectedCount={connectedCount}
+              />
+            )}
+
+            {connectedCount < minPlayers && (
               <div className="p-3 sm:p-4 bg-white/5 rounded-sm border border-white/10 text-center">
                 <p className="text-sm sm:text-base text-muted">
                   <MapPin className="w-4 h-4 inline mr-2" />
-                  Aguardando mais jogadores... (mínimo 3)
+                  Aguardando mais jogadores... (mínimo {minPlayers})
                 </p>
               </div>
             )}
 
-            {isHost && users.filter(u => u.connected !== false).length >= 3 && (
+            {isHost && connectedCount >= minPlayers && (
               <Button 
                 onClick={handleStartGame}
                 className="w-full text-base sm:text-lg py-5 sm:py-6"

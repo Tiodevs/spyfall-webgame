@@ -13,7 +13,7 @@ import {
 } from './ui/dialog';
 import { Plus, Users } from 'lucide-react';
 
-export const CreateRoom = ({ socket, playerId, onRoomJoined }) => {
+export const CreateRoom = ({ socket, playerId, gameType, gameName, onRoomJoined }) => {
   const [userName, setUserName] = useState('');
   const [status, setStatus] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -32,7 +32,7 @@ export const CreateRoom = ({ socket, playerId, onRoomJoined }) => {
       return;
     }
 
-    socket.emit('create-room');
+    socket.emit('create-room', { gameType });
   };
 
   const handleKeyPress = (e) => {
@@ -57,7 +57,7 @@ export const CreateRoom = ({ socket, playerId, onRoomJoined }) => {
     const handleRoomSync = (data) => {
       if (pendingRoomCode && data.roomCode === pendingRoomCode) {
         if (onRoomJoined) {
-          onRoomJoined(data.roomCode, userName.trim(), data.users);
+          onRoomJoined(data.roomCode, userName.trim(), data.users, data.gameType || gameType);
         }
         setIsDialogOpen(false);
         setUserName('');
@@ -81,7 +81,7 @@ export const CreateRoom = ({ socket, playerId, onRoomJoined }) => {
       socket.off('room-sync', handleRoomSync);
       socket.off('error', handleError);
     };
-  }, [socket, userName, playerId, onRoomJoined, pendingRoomCode]);
+  }, [socket, userName, playerId, onRoomJoined, pendingRoomCode, gameType]);
 
   return (
     <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -93,7 +93,7 @@ export const CreateRoom = ({ socket, playerId, onRoomJoined }) => {
       </DialogTrigger>
       <DialogContent className="border-white/10 bg-background/95 backdrop-blur-xl">
         <DialogHeader>
-          <DialogTitle className="font-display text-xl">Criar Nova Sala</DialogTitle>
+          <DialogTitle className="font-display text-xl">Criar sala de {gameName || 'jogo'}</DialogTitle>
           <DialogDescription>
             Digite seu nome para criar e entrar na sala.
           </DialogDescription>

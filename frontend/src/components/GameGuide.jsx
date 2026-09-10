@@ -23,17 +23,17 @@ const STEPS = [
   {
     icon: Users,
     title: 'Entre na sala',
-    description: 'Crie uma sala ou use o código de 4 letras. São necessários pelo menos 3 jogadores. O host inicia a partida.',
+    description: 'Crie uma sala ou use o código de 4 letras. O host ajusta timer, espiões e deck antes de começar. Mínimo 3 jogadores.',
   },
   {
     icon: Eye,
     title: 'Receba seu papel',
-    description: 'Todos os agentes veem o mesmo local secreto. Um jogador é o espião e não vê o local.',
+    description: 'Agentes veem o local secreto e um cargo (ex.: médico, visitante). O espião não vê local nem cargo.',
   },
   {
     icon: MessageCircle,
     title: 'Converse e investigue',
-    description: 'Durante 6 minutos, façam perguntas e respostas em voz alta (ou no chat). Não há turnos fixos — o ritmo é livre.',
+    description: 'Durante o tempo configurado (4, 6 ou 8 min), façam perguntas em voz alta. Use o cargo nas respostas — o ritmo é livre.',
   },
   {
     icon: Target,
@@ -123,9 +123,9 @@ export const GameGuide = ({ onClose, inModal = false }) => {
         <p className="text-sm leading-relaxed text-muted sm:text-base">
           Spyfall é um jogo de <strong className="text-foreground">dedução social</strong>. Todos os jogadores
           (exceto um) conhecem um <strong className="text-foreground">local secreto</strong> — por exemplo, um
-          hospital ou um aeroporto. Um jogador é o <strong className="text-foreground">espião</strong> e não sabe
-          onde estão. Pelo diálogo, os agentes tentam descobrir quem é o infiltrado; o espião tenta descobrir o
-          local sem ser pego.
+          hospital ou um aeroporto — e cada agente recebe um <strong className="text-foreground">cargo</strong> naquele
+          local. Um ou dois jogadores são <strong className="text-foreground">espiões</strong> e não sabem onde estão.
+          Pelo diálogo, os agentes tentam descobrir o infiltrado; o espião tenta descobrir o local sem ser pego.
         </p>
       </section>
 
@@ -140,7 +140,7 @@ export const GameGuide = ({ onClose, inModal = false }) => {
             icon={Eye}
             accentClass="border-l-accent"
           >
-            <p>Vê o nome e o ícone do local no topo da tela.</p>
+            <p>Vê o local e o seu cargo (ex.: enfermeiro, visitante).</p>
             <p>Pode acusar outros jogadores de serem o espião.</p>
             <p>Pode riscar locais na lista para ajudar na dedução.</p>
             <p>Não pode entrar em uma sala com partida já em andamento.</p>
@@ -152,7 +152,7 @@ export const GameGuide = ({ onClose, inModal = false }) => {
             icon={EyeOff}
             accentClass="border-l-red-500"
           >
-            <p>Não vê qual é o local — só a lista de possibilidades.</p>
+            <p>Não vê local nem cargo — só a lista de locais do deck escolhido.</p>
             <p>Pode chutar o local a qualquer momento (com confirmação).</p>
             <p>Não vota em acusações — apenas observa e se defende.</p>
             <p>Se errar o chute, todos os agentes ganham pontos.</p>
@@ -192,19 +192,48 @@ export const GameGuide = ({ onClose, inModal = false }) => {
         </div>
       </section>
 
+      {/* Configurações da sala */}
+      <section className="space-y-4">
+        <SectionTitle icon={Crown}>Configurações da sala (host)</SectionTitle>
+        <Card>
+          <CardContent className="space-y-3 p-5 text-sm text-muted sm:p-6">
+            <p>
+              Antes de <strong className="text-foreground">Começar Partida</strong>, o host define:
+            </p>
+            <ul className="list-inside list-disc space-y-1">
+              <li><strong className="text-foreground">Timer</strong> — 4, 6 ou 8 minutos</li>
+              <li><strong className="text-foreground">Espiões</strong> — 1 ou 2 (2 espiões exige 6+ jogadores)</li>
+              <li><strong className="text-foreground">Deck</strong> — Padrão (24 locais) ou Bizarro (cenários absurdos)</li>
+            </ul>
+            <p>Todos na sala veem as opções escolhidas no lobby.</p>
+          </CardContent>
+        </Card>
+      </section>
+
       {/* Timer */}
       <section className="glass-panel flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:p-6">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-sm bg-accent/10">
           <Timer className="h-7 w-7 text-accent" />
         </div>
         <div>
-          <h3 className="font-display text-lg font-semibold text-foreground">Timer de 6 minutos</h3>
+          <h3 className="font-display text-lg font-semibold text-foreground">Timer configurável</h3>
           <p className="mt-1 text-sm text-muted">
-            Quando a partida começa, um cronômetro aparece para todos. Ele fica amarelo nos últimos 2 minutos e
-            vermelho no último minuto. Se o tempo acabar sem ninguém vencer antes, inicia-se a{' '}
+            O cronômetro segue a duração escolhida pelo host. Fica amarelo nos últimos 2 minutos e vermelho no
+            último minuto. Se o tempo acabar, inicia a{' '}
             <strong className="text-foreground">votação final</strong>.
           </p>
         </div>
+      </section>
+
+      {/* Dois espiões */}
+      <section className="glass-panel space-y-3 p-5 sm:p-6">
+        <SectionTitle icon={EyeOff}>Modo com 2 espiões</SectionTitle>
+        <p className="text-sm text-muted">
+          Com 6 ou mais jogadores, o host pode sortear <strong className="text-foreground">dois espiões</strong>.
+          Eles <strong className="text-foreground">não sabem</strong> um do outro. Se os agentes acusarem e
+          condenarem um espião, a partida <strong className="text-foreground">continua</strong> até pegar o segundo
+          ou o tempo acabar. Na votação final, acertar qualquer espião restante vale ponto.
+        </p>
       </section>
 
       {/* Acusação */}

@@ -1,20 +1,23 @@
-import { Eye, Wifi, WifiOff, BookOpen } from 'lucide-react';
+import { Wifi, WifiOff, BookOpen } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import { Logo } from '../brand/Logo';
 
-export const AppHeader = ({ isConnected, onOpenGuide }) => (
+export const AppHeader = ({ isConnected, onOpenGuide, onGoHome, showGuide = true }) => (
   <header className="relative z-10 flex items-center justify-between py-4 sm:py-6">
-    <div className="flex items-center gap-3">
-      <div className="flex h-9 w-9 items-center justify-center rounded-sm border border-white/10 bg-white/5">
-        <Eye className="h-4 w-4 text-accent" strokeWidth={2.5} />
-      </div>
+    <button
+      type="button"
+      onClick={onGoHome}
+      className="flex items-center gap-3 rounded-sm text-left transition-opacity hover:opacity-90"
+    >
+      <Logo className="h-9 w-9" />
       <span className="font-display text-lg font-bold tracking-tight text-foreground sm:text-xl">
-        Spyfall
+        Roda
       </span>
-    </div>
+    </button>
 
     <div className="flex items-center gap-2 sm:gap-3">
-      {onOpenGuide && (
+      {showGuide && onOpenGuide && (
         <Button
           variant="outline"
           size="sm"

@@ -1,8 +1,12 @@
-const express = require('express');
-const { createServer } = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-require('dotenv').config();
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { isValidGameType, GAME_TYPES } from '../../shared/catalog.js';
+import { getEngine, listEngines } from './games/index.js';
+
+dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
@@ -21,36 +25,8 @@ const io = new Server(httpServer, {
 
 const port = process.env.PORT || 3000;
 const GRACE_PERIOD_MS = 90 * 1000;
-const GAME_DURATION = 6 * 60 * 1000;
 
 const rooms = new Map();
-
-const LOCATIONS = [
-  { id: 1, name: 'Aeroporto', icon: '✈️' },
-  { id: 2, name: 'Banco', icon: '🏦' },
-  { id: 3, name: 'Praia', icon: '🏖️' },
-  { id: 4, name: 'Cassino', icon: '🎰' },
-  { id: 5, name: 'Circo', icon: '🎪' },
-  { id: 6, name: 'Hospital', icon: '🏥' },
-  { id: 7, name: 'Hotel', icon: '🏨' },
-  { id: 8, name: 'Escola', icon: '🏫' },
-  { id: 9, name: 'Restaurante', icon: '🍽️' },
-  { id: 10, name: 'Supermercado', icon: '🛒' },
-  { id: 11, name: 'Teatro', icon: '🎭' },
-  { id: 12, name: 'Museu', icon: '🏛️' },
-  { id: 13, name: 'Estádio de Futebol', icon: '⚽' },
-  { id: 14, name: 'Delegacia', icon: '🚔' },
-  { id: 15, name: 'Navio Cruzeiro', icon: '🚢' },
-  { id: 16, name: 'Spa', icon: '💆' },
-  { id: 17, name: 'Estação Espacial', icon: '🚀' },
-  { id: 18, name: 'Submarino', icon: '🛥️' },
-  { id: 19, name: 'Base Militar', icon: '🎖️' },
-  { id: 20, name: 'Igreja', icon: '⛪' },
-  { id: 21, name: 'Universidade', icon: '🎓' },
-  { id: 22, name: 'Fazenda', icon: '🌾' },
-  { id: 23, name: 'Estúdio de TV', icon: '📺' },
-  { id: 24, name: 'Parque de Diversões', icon: '🎡' },
-];
 
 function generateRoomCode() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -64,12 +40,15 @@ function generateRoomCode() {
   return code;
 }
 
-function getRoomsList() {
-  return Array.from(rooms.values()).map(room => ({
-    code: room.code,
-    userCount: room.users.filter(u => u.connected).length,
-    createdAt: room.createdAt
-  }));
+function getRoomsList(gameType) {
+  return Array.from(rooms.values())
+    .filter(room => !gameType || room.gameType === gameType)
+    .map(room => ({
+      code: room.code,
+      gameType: room.gameType,
+      userCount: room.users.filter(u => u.connected).length,
+      createdAt: room.createdAt
+    }));
 }
 
 function validateUserName(userName) {
@@ -139,44 +118,29 @@ function migrateHost(room) {
   room.hostId = connected.length > 0 ? connected[0].playerId : null;
 }
 
-function buildRoomSync(room, playerId) {
-  const gs = room.gameState;
-  let game = null;
+const ctx = {
+  io,
+  rooms,
+  getConnectedUsers,
+  getConnectedCount,
+  serializeUsers,
+  findUserByPlayerId,
+  getPlayerIdFromSocket,
+  clearGameTimer,
+  broadcastRoomState: null
+};
 
-  if (gs?.isPlaying) {
-    const isSpy = gs.spyId === playerId;
-    game = {
-      isPlaying: true,
-      startedAt: gs.startedAt,
-      duration: gs.duration,
-      playersCount: getConnectedCount(room),
-      isSpy,
-      location: isSpy ? null : gs.location,
-      accusation: gs.accusation
-        ? {
-            accuserId: gs.accusation.accuserId,
-            accuserName: room.users.find(u => u.playerId === gs.accusation.accuserId)?.name,
-            accusedId: gs.accusation.accusedId,
-            accusedName: room.users.find(u => u.playerId === gs.accusation.accusedId)?.name,
-            votes: { ...gs.accusation.votes }
-          }
-        : null,
-      finalVoting: gs.finalVoting?.isActive
-        ? {
-            isActive: true,
-            votesCount: Object.keys(gs.finalVoting.votes).length,
-            totalPlayers: getConnectedCount(room),
-            myVote: gs.finalVoting.votes[playerId] ?? null
-          }
-        : null
-    };
-  }
+function buildRoomSync(room, playerId) {
+  const engine = getEngine(room.gameType);
+  const game = engine.serializeGame(room, playerId, ctx);
 
   return {
     roomCode: room.code,
+    gameType: room.gameType,
     users: serializeUsers(room),
     hostId: room.hostId,
     scores: { ...room.scores },
+    settings: { ...room.settings },
     game
   };
 }
@@ -196,127 +160,7 @@ function broadcastRoomState(room, roomCode) {
   });
 }
 
-function getAccusationVoteStats(room, accusation) {
-  const agentsWhoCanVote = room.users.filter(
-    u =>
-      u.connected &&
-      u.playerId !== accusation.accusedId &&
-      u.playerId !== room.gameState.spyId
-  );
-  const totalVotesNeeded = agentsWhoCanVote.length;
-  const currentVotes = Object.keys(accusation.votes).length;
-  return { agentsWhoCanVote, totalVotesNeeded, currentVotes };
-}
-
-function tryResolveAccusation(room, roomCode) {
-  const accusation = room.gameState?.accusation;
-  if (!accusation) return;
-
-  const { totalVotesNeeded, currentVotes } = getAccusationVoteStats(room, accusation);
-
-  if (currentVotes < totalVotesNeeded) return;
-
-  const votesInFavor = Object.values(accusation.votes).filter(v => v === true).length;
-  const allAgree = votesInFavor === totalVotesNeeded;
-
-  if (allAgree) {
-    const accusedIsSpy = accusation.accusedId === room.gameState.spyId;
-    clearGameTimer(room);
-
-    if (accusedIsSpy) {
-      room.users.forEach(user => {
-        if (
-          user.playerId !== room.gameState.spyId &&
-          user.playerId !== accusation.accuserId &&
-          accusation.votes[user.playerId] === true
-        ) {
-          room.scores[user.playerId] = (room.scores[user.playerId] || 0) + 1;
-        }
-      });
-      room.scores[accusation.accuserId] = (room.scores[accusation.accuserId] || 0) + 2;
-    } else {
-      room.scores[room.gameState.spyId] = (room.scores[room.gameState.spyId] || 0) + 2;
-    }
-
-    endGame(room, roomCode, 'accusation', {
-      accusedId: accusation.accusedId,
-      accusedName: room.users.find(u => u.playerId === accusation.accusedId)?.name,
-      accusedWasSpy: accusedIsSpy,
-      accuserId: accusation.accuserId,
-      accuserName: room.users.find(u => u.playerId === accusation.accuserId)?.name
-    });
-  } else {
-    room.gameState.accusation = null;
-    io.to(roomCode).emit('accusation-failed', {
-      votesInFavor,
-      votesNeeded: totalVotesNeeded,
-      message: 'Acusação rejeitada. O jogo continua.'
-    });
-  }
-}
-
-function tryCompleteFinalVoting(room, roomCode) {
-  const finalVoting = room.gameState?.finalVoting;
-  if (!finalVoting?.isActive) return;
-
-  const eligibleVoters = getConnectedUsers(room);
-  const votesFromEligible = eligibleVoters.filter(
-    u => finalVoting.votes[u.playerId] !== undefined
-  ).length;
-
-  if (votesFromEligible < eligibleVoters.length) return;
-
-  const spyId = room.gameState.spyId;
-  const votesResult = {};
-
-  Object.entries(finalVoting.votes).forEach(([voterId, targetId]) => {
-    if (targetId === spyId) {
-      room.scores[voterId] = (room.scores[voterId] || 0) + 1;
-      votesResult[voterId] = { votedCorrectly: true };
-    } else {
-      votesResult[voterId] = { votedCorrectly: false };
-    }
-  });
-
-  endGame(room, roomCode, 'final-vote', { votesResult });
-}
-
-function endGame(room, roomCode, reason, extra = {}) {
-  clearGameTimer(room);
-  const gameState = room.gameState;
-  room.gameState = null;
-
-  const spyUser = room.users.find(u => u.playerId === gameState?.spyId);
-
-  io.to(roomCode).emit('game-ended', {
-    roomCode,
-    spyId: gameState?.spyId,
-    spyName: spyUser?.name,
-    location: gameState?.location,
-    reason,
-    scores: room.scores,
-    ...extra
-  });
-}
-
-function handleAccusationOnPlayerRemoval(room, roomCode, removedPlayerId) {
-  const accusation = room.gameState?.accusation;
-  if (!accusation) return;
-
-  if (
-    accusation.accuserId === removedPlayerId ||
-    accusation.accusedId === removedPlayerId
-  ) {
-    room.gameState.accusation = null;
-    io.to(roomCode).emit('accusation-cancelled', {
-      message: 'Acusação cancelada (jogador saiu da sala).'
-    });
-    return;
-  }
-
-  delete accusation.votes[removedPlayerId];
-  tryResolveAccusation(room, roomCode);
-}
+ctx.broadcastRoomState = broadcastRoomState;
 
 function deleteRoom(room, roomCode) {
   clearGameTimer(room);
@@ -330,7 +174,7 @@ function removePlayerFromRoom(
   room,
   roomCode,
   playerId,
-  { skipSocketLeave = false, spyLeaveReason = 'spy-left' } = {}
+  { skipSocketLeave = false, disconnected = false } = {}
 ) {
   const userIndex = room.users.findIndex(u => u.playerId === playerId);
   if (userIndex === -1) return;
@@ -338,16 +182,10 @@ function removePlayerFromRoom(
   const user = room.users[userIndex];
   cancelDisconnectTimer(room, playerId);
 
-  const wasSpy =
-    room.gameState?.isPlaying && room.gameState.spyId === playerId;
-  const spyNameForEnd = wasSpy ? user.name : undefined;
   const wasHost = room.hostId === playerId;
+  const engine = getEngine(room.gameType);
 
-  if (room.gameState?.finalVoting?.votes) {
-    delete room.gameState.finalVoting.votes[playerId];
-  }
-
-  handleAccusationOnPlayerRemoval(room, roomCode, playerId);
+  engine.beforeRemovePlayer?.(room, roomCode, playerId, ctx);
 
   room.users.splice(userIndex, 1);
 
@@ -370,13 +208,7 @@ function removePlayerFromRoom(
     return;
   }
 
-  if (wasSpy && room.gameState?.isPlaying) {
-    endGame(room, roomCode, spyLeaveReason, { spyName: spyNameForEnd });
-    io.emit('rooms-updated', getRoomsList());
-    return;
-  }
-
-  tryCompleteFinalVoting(room, roomCode);
+  const result = engine.afterRemovePlayer?.(room, roomCode, playerId, { user, disconnected }, ctx) || {};
 
   const payload = {
     playerId,
@@ -387,7 +219,9 @@ function removePlayerFromRoom(
     gameActive: !!room.gameState?.isPlaying
   };
 
-  io.to(roomCode).emit('user-left', payload);
+  if (!result.skipUserLeft) {
+    io.to(roomCode).emit('user-left', payload);
+  }
   io.emit('rooms-updated', getRoomsList());
 }
 
@@ -404,7 +238,7 @@ function scheduleDisconnectRemoval(room, roomCode, playerId) {
 
     removePlayerFromRoom(room, roomCode, playerId, {
       skipSocketLeave: true,
-      spyLeaveReason: 'spy-disconnected'
+      disconnected: true
     });
   }, GRACE_PERIOD_MS);
 }
@@ -423,7 +257,6 @@ function attachUserToSocket(socket, room, roomCode, user) {
   user.socketId = socket.id;
   user.connected = true;
   user.disconnectedAt = null;
-  user.name = user.name; // preserve; updated on join if needed
 
   cancelDisconnectTimer(room, user.playerId);
   socket.join(roomCode);
@@ -476,7 +309,6 @@ function addOrRejoinUser(socket, room, roomCode, playerId, userName) {
     socketId: socket.id,
     name: trimmedName,
     connected: true,
-    disconnectedAt: null,
     joinedAt: new Date()
   };
   room.users.push(user);
@@ -497,12 +329,17 @@ app.use(cors({
 app.use(express.json());
 
 app.get('/api/rooms', (req, res) => {
-  res.json(getRoomsList());
+  const gameType = typeof req.query.gameType === 'string' ? req.query.gameType : undefined;
+  res.json(getRoomsList(gameType));
+});
+
+app.get('/api/games', (_req, res) => {
+  res.json({ games: listEngines().map(engine => engine.id) });
 });
 
 app.get('/', (req, res) => {
   res.json({
-    message: 'Spyfall Backend API',
+    message: 'Roda — hub de jogos',
     status: 'running',
     rooms: rooms.size
   });
@@ -511,22 +348,30 @@ app.get('/', (req, res) => {
 io.on('connection', (socket) => {
   console.log(`Usuário conectado: ${socket.id}`);
 
-  socket.on('create-room', () => {
+  listEngines().forEach(engine => {
+    engine.registerHandlers?.(socket, ctx);
+  });
+
+  socket.on('create-room', (payload = {}) => {
+    const gameType = isValidGameType(payload.gameType) ? payload.gameType : GAME_TYPES.SPYFALL;
+    const engine = getEngine(gameType);
     const roomCode = generateRoomCode();
     const room = {
       code: roomCode,
+      gameType,
       users: [],
       hostId: null,
       createdAt: new Date(),
       scores: {},
+      settings: { ...engine.defaultSettings },
       gameState: null,
       gameTimer: null,
       disconnectTimers: {}
     };
     rooms.set(roomCode, room);
 
-    console.log(`Sala criada: ${roomCode}`);
-    socket.emit('room-created', { roomCode });
+    console.log(`Sala criada: ${roomCode} (${gameType})`);
+    socket.emit('room-created', { roomCode, gameType });
     io.emit('rooms-updated', getRoomsList());
   });
 
@@ -618,6 +463,37 @@ io.on('connection', (socket) => {
     removePlayerFromRoom(room, code, playerId);
   });
 
+  socket.on('update-room-settings', ({ roomCode, settings }) => {
+    const room = rooms.get(roomCode);
+
+    if (!room) {
+      socket.emit('error', { message: 'Sala não encontrada' });
+      return;
+    }
+
+    const playerId = getPlayerIdFromSocket(room, socket.id);
+    if (room.hostId !== playerId) {
+      socket.emit('error', { message: 'Apenas o host pode alterar as configurações' });
+      return;
+    }
+
+    if (room.gameState?.isPlaying) {
+      socket.emit('error', { message: 'Não é possível alterar configurações durante a partida' });
+      return;
+    }
+
+    const engine = getEngine(room.gameType);
+    const connectedCount = getConnectedCount(room);
+    const validationError = engine.validateSettings(settings, connectedCount);
+    if (validationError) {
+      socket.emit('error', { message: validationError });
+      return;
+    }
+
+    room.settings = { ...engine.defaultSettings, ...settings };
+    broadcastRoomState(room, roomCode);
+  });
+
   socket.on('start-game', ({ roomCode }) => {
     const room = rooms.get(roomCode);
 
@@ -637,50 +513,23 @@ io.on('connection', (socket) => {
       return;
     }
 
+    const engine = getEngine(room.gameType);
     const connectedUsers = getConnectedUsers(room);
-    if (connectedUsers.length < 3) {
-      socket.emit('error', { message: 'São necessários pelo menos 3 jogadores conectados' });
+    if (connectedUsers.length < engine.minPlayers) {
+      socket.emit('error', {
+        message: `São necessários pelo menos ${engine.minPlayers} jogadores conectados`
+      });
       return;
     }
 
-    const spyIndex = Math.floor(Math.random() * connectedUsers.length);
-    const spyId = connectedUsers[spyIndex].playerId;
+    const settings = room.settings || { ...engine.defaultSettings };
+    const settingsError = engine.validateSettings(settings, connectedUsers.length);
+    if (settingsError) {
+      socket.emit('error', { message: settingsError });
+      return;
+    }
 
-    const locationIndex = Math.floor(Math.random() * LOCATIONS.length);
-    const location = LOCATIONS[locationIndex];
-    const startedAt = Date.now();
-
-    room.gameState = {
-      isPlaying: true,
-      spyId,
-      location,
-      startedAt,
-      duration: GAME_DURATION,
-      accusation: null,
-      finalVoting: null,
-      gameEnded: false
-    };
-
-    room.gameTimer = setTimeout(() => {
-      if (room.gameState?.isPlaying && !room.gameState?.gameEnded) {
-        room.gameState.finalVoting = {
-          votes: {},
-          isActive: true
-        };
-
-        console.log(`Tempo esgotado na sala ${roomCode} - Iniciando votação final`);
-
-        io.to(roomCode).emit('voting-started', {
-          roomCode,
-          message: 'Tempo esgotado! Vote em quem você acha que é o espião.',
-          totalPlayers: getConnectedCount(room)
-        });
-      }
-    }, GAME_DURATION);
-
-    console.log(`Partida iniciada na sala ${roomCode}. Espião: ${spyId}, Local: ${location.name}`);
-
-    broadcastRoomState(room, roomCode);
+    engine.startGame(room, roomCode, ctx);
   });
 
   socket.on('end-game', ({ roomCode }) => {
@@ -697,208 +546,8 @@ io.on('connection', (socket) => {
       return;
     }
 
-    endGame(room, roomCode, 'host');
-  });
-
-  socket.on('spy-guess', ({ roomCode, locationId }) => {
-    const room = rooms.get(roomCode);
-
-    if (!room || !room.gameState?.isPlaying) {
-      socket.emit('error', { message: 'Partida não encontrada ou não está em andamento' });
-      return;
-    }
-
-    const playerId = getPlayerIdFromSocket(room, socket.id);
-    if (room.gameState.spyId !== playerId) {
-      socket.emit('error', { message: 'Apenas o espião pode chutar o local' });
-      return;
-    }
-
-    clearGameTimer(room);
-
-    const guessedLocation = LOCATIONS.find(l => l.id === locationId);
-    const correctLocation = room.gameState.location;
-    const isCorrect = locationId === correctLocation.id;
-
-    if (isCorrect) {
-      room.scores[playerId] = (room.scores[playerId] || 0) + 2;
-    } else {
-      room.users.forEach(user => {
-        if (user.playerId !== room.gameState.spyId) {
-          room.scores[user.playerId] = (room.scores[user.playerId] || 0) + 1;
-        }
-      });
-    }
-
-    const gameState = room.gameState;
-    room.gameState = null;
-
-    io.to(roomCode).emit('game-ended', {
-      roomCode,
-      spyId: gameState.spyId,
-      spyName: room.users.find(u => u.playerId === gameState.spyId)?.name,
-      location: gameState.location,
-      reason: 'spy-guess',
-      spyGuessedLocation: guessedLocation,
-      spyGuessCorrect: isCorrect,
-      scores: room.scores
-    });
-  });
-
-  socket.on('start-accusation', ({ roomCode, accusedId }) => {
-    const room = rooms.get(roomCode);
-
-    if (!room || !room.gameState?.isPlaying) {
-      socket.emit('error', { message: 'Partida não encontrada ou não está em andamento' });
-      return;
-    }
-
-    const playerId = getPlayerIdFromSocket(room, socket.id);
-    if (!playerId) return;
-
-    if (accusedId === playerId) {
-      socket.emit('error', { message: 'Você não pode acusar a si mesmo' });
-      return;
-    }
-
-    if (room.gameState.accusation) {
-      socket.emit('error', { message: 'Já existe uma acusação em andamento' });
-      return;
-    }
-
-    const accused = room.users.find(u => u.playerId === accusedId && u.connected);
-    if (!accused) {
-      socket.emit('error', { message: 'Jogador não encontrado' });
-      return;
-    }
-
-    room.gameState.accusation = {
-      accuserId: playerId,
-      accusedId,
-      votes: {}
-    };
-
-    room.gameState.accusation.votes[playerId] = true;
-
-    const accuser = findUserByPlayerId(room, playerId);
-
-    io.to(roomCode).emit('accusation-started', {
-      accuserId: playerId,
-      accuserName: accuser?.name,
-      accusedId,
-      accusedName: accused.name,
-      votes: { ...room.gameState.accusation.votes }
-    });
-  });
-
-  socket.on('vote-accusation', ({ roomCode, vote }) => {
-    const room = rooms.get(roomCode);
-
-    if (!room || !room.gameState?.isPlaying || !room.gameState?.accusation) {
-      socket.emit('error', { message: 'Não há acusação em andamento' });
-      return;
-    }
-
-    const playerId = getPlayerIdFromSocket(room, socket.id);
-    if (!playerId) return;
-
-    const accusation = room.gameState.accusation;
-
-    if (playerId === accusation.accusedId) {
-      socket.emit('error', { message: 'O acusado não pode votar' });
-      return;
-    }
-
-    if (playerId === room.gameState.spyId) {
-      socket.emit('error', { message: 'O espião não pode votar na acusação' });
-      return;
-    }
-
-    const voter = findUserByPlayerId(room, playerId);
-    if (!voter?.connected) {
-      socket.emit('error', { message: 'Você precisa estar conectado para votar' });
-      return;
-    }
-
-    accusation.votes[playerId] = vote;
-
-    const { totalVotesNeeded, currentVotes } = getAccusationVoteStats(room, accusation);
-
-    io.to(roomCode).emit('accusation-vote-update', {
-      playerId,
-      playerName: voter.name,
-      vote,
-      votesCount: currentVotes,
-      votesNeeded: totalVotesNeeded,
-      votes: { ...accusation.votes }
-    });
-
-    tryResolveAccusation(room, roomCode);
-  });
-
-  socket.on('cancel-accusation', ({ roomCode }) => {
-    const room = rooms.get(roomCode);
-
-    if (!room || !room.gameState?.accusation) {
-      return;
-    }
-
-    const playerId = getPlayerIdFromSocket(room, socket.id);
-    if (room.gameState.accusation.accuserId !== playerId) {
-      socket.emit('error', { message: 'Apenas quem fez a acusação pode cancelar' });
-      return;
-    }
-
-    room.gameState.accusation = null;
-
-    io.to(roomCode).emit('accusation-cancelled', {
-      message: 'Acusação cancelada'
-    });
-  });
-
-  socket.on('final-vote', ({ roomCode, votedForId }) => {
-    const room = rooms.get(roomCode);
-
-    if (!room || !room.gameState?.finalVoting?.isActive) {
-      socket.emit('error', { message: 'Votação não está ativa' });
-      return;
-    }
-
-    const playerId = getPlayerIdFromSocket(room, socket.id);
-    if (!playerId) return;
-
-    if (votedForId === playerId) {
-      socket.emit('error', { message: 'Você não pode votar em si mesmo' });
-      return;
-    }
-
-    const votedFor = room.users.find(u => u.playerId === votedForId && u.connected);
-    if (!votedFor) {
-      socket.emit('error', { message: 'Jogador não encontrado' });
-      return;
-    }
-
-    const voter = findUserByPlayerId(room, playerId);
-    if (!voter?.connected) {
-      socket.emit('error', { message: 'Você precisa estar conectado para votar' });
-      return;
-    }
-
-    room.gameState.finalVoting.votes[playerId] = votedForId;
-
-    const eligibleVoters = getConnectedUsers(room);
-    const votesFromEligible = eligibleVoters.filter(
-      u => room.gameState.finalVoting.votes[u.playerId] !== undefined
-    ).length;
-
-    io.to(roomCode).emit('final-vote-update', {
-      playerId,
-      playerName: voter.name,
-      votesCount: votesFromEligible,
-      totalPlayers: eligibleVoters.length
-    });
-
-    tryCompleteFinalVoting(room, roomCode);
+    const engine = getEngine(room.gameType);
+    engine.endGame(room, roomCode, 'host', {}, ctx);
   });
 
   socket.on('disconnect', () => {

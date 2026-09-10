@@ -14,7 +14,7 @@ import {
 } from './ui/dialog';
 import { List, LogIn, Clock, Users } from 'lucide-react';
 
-export const RoomsList = ({ socket, playerId, onRoomJoined }) => {
+export const RoomsList = ({ socket, playerId, gameType, gameName, onRoomJoined }) => {
   const [rooms, setRooms] = useState([]);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [userName, setUserName] = useState('');
@@ -27,7 +27,8 @@ export const RoomsList = ({ socket, playerId, onRoomJoined }) => {
 
     const fetchRooms = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_SOCKET_URL}/api/rooms`);
+        const query = gameType ? `?gameType=${encodeURIComponent(gameType)}` : '';
+        const response = await fetch(`${import.meta.env.VITE_SOCKET_URL}/api/rooms${query}`);
         const data = await response.json();
         setRooms(data);
       } catch (error) {
@@ -38,13 +39,17 @@ export const RoomsList = ({ socket, playerId, onRoomJoined }) => {
     fetchRooms();
 
     const handleRoomsUpdated = (updatedRooms) => {
-      setRooms(updatedRooms);
+      setRooms(
+        gameType
+          ? updatedRooms.filter(room => room.gameType === gameType)
+          : updatedRooms
+      );
     };
 
     const handleRoomSync = (data) => {
       if (pendingRoomCode && data.roomCode === pendingRoomCode) {
         if (onRoomJoined) {
-          onRoomJoined(data.roomCode, userName.trim(), data.users);
+          onRoomJoined(data.roomCode, userName.trim(), data.users, data.gameType || gameType);
         }
         setIsDialogOpen(false);
         setUserName('');
@@ -69,7 +74,7 @@ export const RoomsList = ({ socket, playerId, onRoomJoined }) => {
       socket.off('room-sync', handleRoomSync);
       socket.off('error', handleError);
     };
-  }, [socket, userName, playerId, onRoomJoined, pendingRoomCode]);
+  }, [socket, userName, playerId, onRoomJoined, pendingRoomCode, gameType]);
 
   const handleOpenDialog = (room) => {
     setSelectedRoom(room);
@@ -110,13 +115,13 @@ export const RoomsList = ({ socket, playerId, onRoomJoined }) => {
         <CardHeader className="border-b border-white/5 pb-4">
           <CardTitle className="flex items-center gap-2 text-xl">
             <List className="h-5 w-5 text-accent" />
-            Salas Disponíveis
+            Salas de {gameName || 'jogo'}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
           {rooms.length === 0 ? (
             <p className="py-10 text-center text-sm italic text-muted">
-              Nenhuma sala disponível. Crie uma nova sala!
+              Nenhuma sala disponível. Crie uma nova sala de {gameName || 'jogo'}!
             </p>
           ) : (
             <div className="space-y-2">
