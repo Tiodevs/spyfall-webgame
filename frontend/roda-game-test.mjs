@@ -1,6 +1,7 @@
 import { io } from 'socket.io-client';
 
-const URL = 'http://localhost:3010';
+// Uso: node roda-game-test.mjs [url-do-backend]   (padrão: http://localhost:3010)
+const URL = process.argv[2] || process.env.RODA_URL || 'http://localhost:3010';
 
 function connect(playerId) {
   return new Promise((resolve, reject) => {

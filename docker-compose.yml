@@ -1,0 +1,51 @@
+# Ambiente local "igual produção" da Roda.
+#   docker compose up --build -d     →  http://localhost:8080
+#   docker compose --profile test run --rm smoke   (teste automático dos jogos)
+#   docker compose down
+#
+# backend: mesmo Dockerfile do Railway.
+# web:     build do Vite servido por nginx, com proxy de /socket.io e /api.
+# Portas configuráveis: RODA_WEB_PORT (padrão 8080) e RODA_API_PORT (padrão 3001).
+name: roda
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: prod
+    environment:
+      PORT: "3000"
+      NODE_ENV: production
+      ALLOWED_ORIGINS: http://localhost:${RODA_WEB_PORT:-8080},http://localhost:5173
+    ports:
+      - "${RODA_API_PORT:-3001}:3000"
+    init: true
+    restart: on-failure
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: prod
+    ports:
+      - "${RODA_WEB_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: on-failure
+
+  # Teste ponta a ponta (Spyfall + Quem sou eu) contra o backend do compose.
+  # Não sobe com "up"; rode com: docker compose --profile test run --rm smoke
+  smoke:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: deps
+    command: ["node", "frontend/roda-game-test.mjs", "http://backend:3000"]
+    volumes:
+      - ./frontend/roda-game-test.mjs:/app/frontend/roda-game-test.mjs:ro
+    depends_on:
+      backend:
+        condition: service_healthy

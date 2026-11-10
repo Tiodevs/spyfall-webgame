@@ -1,0 +1,42 @@
+# Desenvolvimento com hot reload: o código do host é montado nos containers.
+#   docker compose -f docker-compose.dev.yml up --build   →  http://localhost:5173
+#
+# - backend: nodemon reinicia ao salvar backend/src ou shared/.
+# - web: Vite com HMR; /socket.io e /api passam pelo proxy do Vite (mesma origem).
+# Mudou package.json? Rode de novo com --build -V para reinstalar as dependências.
+name: roda-dev
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: dev
+    environment:
+      PORT: "3000"
+      NODE_ENV: development
+      ALLOWED_ORIGINS: http://localhost:${RODA_DEV_PORT:-5173}
+    volumes:
+      - ./backend/src:/app/backend/src
+      - ./shared:/app/shared
+    ports:
+      - "${RODA_API_PORT:-3001}:3000"
+    init: true
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: dev
+    environment:
+      VITE_SOCKET_URL: ""                    # vazio = mesma origem (proxy do Vite)
+      DEV_PROXY_TARGET: http://backend:3000
+      DEV_USE_POLLING: "true"
+    volumes:
+      - ./frontend:/app/frontend
+      - ./shared:/app/shared
+      - /app/frontend/node_modules           # mantém o node_modules Linux da imagem
+    ports:
+      - "${RODA_DEV_PORT:-5173}:5173"
+    depends_on:
+      - backend

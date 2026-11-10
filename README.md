@@ -159,6 +159,40 @@ npm run dev
 
 O frontend estará disponível em `http://localhost:5173` e o backend em `http://localhost:3000`.
 
+### Rodando com Docker
+
+Pré-requisito: Docker Desktop. Não precisa de `npm install` nem de `.env`.
+
+```bash
+# Ambiente "igual produção": backend com o mesmo Dockerfile do Railway + front buildado no nginx
+docker compose up --build -d        # ou: npm run docker:up
+```
+
+- Jogo: <http://localhost:8080> (no celular, no mesmo Wi-Fi: `http://SEU_IP:8080`)
+- API: <http://localhost:3001/health>
+- Portas ocupadas? Crie um `.env` na raiz com `RODA_WEB_PORT=8081` e/ou `RODA_API_PORT=3002` (o Compose lê sozinho)
+
+O nginx repassa `/socket.io` e `/api` para o backend, então o front usa a mesma origem e funciona em
+`localhost` e pelo IP da rede sem mexer em CORS. Se o celular não abrir, libere a porta no Firewall do Windows.
+
+```bash
+docker compose --profile test run --rm smoke   # teste automático do Spyfall e do Quem sou eu (npm run docker:test)
+docker compose logs -f backend                 # logs do servidor (npm run docker:logs)
+docker compose down                            # derruba tudo (npm run docker:down)
+```
+
+Para testar sozinho no mesmo computador, abra cada jogador num navegador ou janela anônima diferente: o
+`playerId` fica no `localStorage`, então abas do mesmo navegador viram o mesmo jogador.
+
+#### Desenvolvimento com hot reload
+
+```bash
+docker compose -f docker-compose.dev.yml up --build   # ou: npm run docker:dev  →  http://localhost:5173
+```
+
+O código do host é montado nos containers: o nodemon reinicia o backend ao salvar `backend/src` ou `shared/`,
+e o Vite faz HMR no front. Se mudar algum `package.json`, suba de novo com `--build -V`.
+
 ### Acessando pelo Celular (Rede Local)
 
 Para testar no celular, adicione o IP da sua máquina nas origens permitidas:
@@ -171,19 +205,26 @@ Para testar no celular, adicione o IP da sua máquina nas origens permitidas:
 
 ### Backend (Railway)
 
-1. Crie um projeto no [Railway](https://railway.app/)
-2. Conecte seu repositório GitHub
-3. Configure as variáveis de ambiente:
+O backend importa `shared/` (fora da pasta `backend/`), então o serviço precisa ser buildado a partir da
+**raiz do repositório** com o `backend/Dockerfile`. Com o Root Directory em `/backend` o container não tem
+`shared/` e cai na hora com `ERR_MODULE_NOT_FOUND`.
+
+1. Crie um projeto no [Railway](https://railway.app/) e conecte o repositório GitHub
+2. Em **Settings → Source**, deixe o **Root Directory** como `/` (raiz)
+3. Configure as variáveis:
+   - `RAILWAY_DOCKERFILE_PATH=backend/Dockerfile`
    - `NODE_ENV=production`
-   - `ALLOWED_ORIGINS=https://seu-app.vercel.app`
-4. O arquivo `railway.json` já está configurado
+   - `ALLOWED_ORIGINS=https://seu-dominio.com,https://seu-app.vercel.app` (sem barra no final)
+4. Em **Settings → Deploy**, configure o **Healthcheck Path** como `/health`: assim um deploy quebrado não
+   substitui o que está no ar
+5. Opcional: **Watch Paths** `/backend/**` e `/shared/**`, para commits só de front não redeployarem o backend
 
 ### Frontend (Vercel)
 
 1. Importe o projeto no [Vercel](https://vercel.com/)
 2. Configure o **Root Directory** como `frontend`
 3. Adicione a variável de ambiente:
-   - `VITE_SOCKET_URL=https://sua-api.railway.app`
+   - `VITE_SOCKET_URL=https://sua-api.railway.app` (barra no final é ignorada)
 
 ## 🏗️ Estrutura do Projeto
 
