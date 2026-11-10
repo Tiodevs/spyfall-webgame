@@ -11,9 +11,12 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:5173', 'http://localhost:3000'];
+// Aceita "a, b" ou "https://x.com/" no ALLOWED_ORIGINS: espaço e barra final
+// fazem a origem não bater com o header Origin do navegador.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000')
+  .split(',')
+  .map(origin => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
 
 const io = new Server(httpServer, {
   cors: {
@@ -345,6 +348,11 @@ app.get('/', (req, res) => {
   });
 });
 
+// Healthcheck (Docker e Railway): só responde se o processo subiu de verdade.
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', uptime: Math.round(process.uptime()) });
+});
+
 io.on('connection', (socket) => {
   console.log(`Usuário conectado: ${socket.id}`);
 
@@ -606,4 +614,16 @@ io.on('connection', (socket) => {
 
 httpServer.listen(port, () => {
   console.log(`Servidor rodando em http://localhost:${port}`);
+  console.log(`Origens permitidas: ${allowedOrigins.join(', ')}`);
 });
+
+// Railway e Docker mandam SIGTERM no redeploy/stop: fecha os sockets e sai
+// na hora, em vez de esperar o SIGKILL.
+function shutdown(signal) {
+  console.log(`${signal} recebido, encerrando o servidor...`);
+  io.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 5000).unref();
+}
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));
