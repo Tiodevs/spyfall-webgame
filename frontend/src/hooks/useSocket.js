@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
-
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
+import { SERVER_URL } from '../lib/serverUrl';
 
 export const useSocket = (onReconnect) => {
   const [socket, setSocket] = useState(null);
@@ -14,7 +13,8 @@ export const useSocket = (onReconnect) => {
   }, [onReconnect]);
 
   useEffect(() => {
-    const socketInstance = io(SOCKET_URL, {
+    // undefined = conecta na mesma origem da página
+    const socketInstance = io(SERVER_URL || undefined, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 10,

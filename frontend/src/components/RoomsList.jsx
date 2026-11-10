@@ -13,6 +13,7 @@ import {
   DialogDescription,
 } from './ui/dialog';
 import { List, LogIn, Clock, Users } from 'lucide-react';
+import { apiUrl } from '../lib/serverUrl';
 
 export const RoomsList = ({ socket, playerId, gameType, gameName, onRoomJoined }) => {
   const [rooms, setRooms] = useState([]);
@@ -28,7 +29,7 @@ export const RoomsList = ({ socket, playerId, gameType, gameName, onRoomJoined }
     const fetchRooms = async () => {
       try {
         const query = gameType ? `?gameType=${encodeURIComponent(gameType)}` : '';
-        const response = await fetch(`${import.meta.env.VITE_SOCKET_URL}/api/rooms${query}`);
+        const response = await fetch(apiUrl(`/api/rooms${query}`));
         const data = await response.json();
         setRooms(data);
       } catch (error) {
