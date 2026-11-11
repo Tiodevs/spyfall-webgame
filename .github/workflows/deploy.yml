@@ -1,0 +1,348 @@
+name: deploy
+
+# Publicação em development e, com aprovação, em production.
+#
+# Roda depois de o ci.yml passar num push para a main, sempre com o commit que a CI testou, e
+# só se esse commit ainda for o topo da main: uma CI antiga que termine depois de uma nova não
+# devolve código velho ao ar. O disparo manual vale só na main e só para um commit em que a CI
+# já passou.
+#
+# Cada GitHub Environment (development e production) guarda os próprios segredos e variáveis:
+#   segredos:  RAILWAY_TOKEN (token do projeto, do ambiente da Railway), VERCEL_TOKEN
+#   variáveis: VERCEL_ORG_ID, VERCEL_PROJECT_ID,
+#              API_URL  (origem https do backend na Railway, sem barra no fim),
+#              WEB_HOST (host do frontend, sem https://)
+# O ambiente production exige a aprovação de quem opera antes do primeiro passo.
+#
+# A variável de repositório DEPLOY_ENABLED liga o pipeline. Ela fica desligada até os segredos
+# acima existirem, para um push na main não falhar por falta de token.
+#
+# Fluxo: gate -> development (backend na Railway, preview da Vercel com o alias estável,
+# fumaça e uma partida de cada jogo) -> aprovação -> production (o mesmo, com o domínio de
+# produção da Vercel). O passo a passo da configuração está em docs/CONFIGURAR-PIPELINE.md.
+
+on:
+  # Quando uma execução do ci.yml termina num commit da main, com qualquer resultado. O job
+  # gate deixa passar só a que terminou verde e veio de um push. O GitHub roda este arquivo
+  # na versão da main.
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  # Disparo manual pela aba Actions. O gate só aceita a main.
+  workflow_dispatch:
+
+# O token do GitHub só lê: o checkout, a consulta do topo da main e a das execuções da CI.
+permissions:
+  contents: read
+  actions: read
+
+# Versões fixas das CLIs e nomes da Railway, iguais nos dois ambientes.
+env:
+  RAILWAY_CLI_VERSION: 5.71.0
+  VERCEL_CLI_VERSION: 65.2.0
+  # O serviço do backend no projeto `spyfall` da Railway.
+  RAILWAY_SERVICE: spyfall-webgame
+
+jobs:
+  # Decide se este commit publica. Não usa segredo nem GitHub Environment.
+  gate:
+    name: gate
+    # O pipeline ligado e, além disso, um disparo manual na main ou uma CI verde de um push.
+    # `event == 'push'` descarta a CI de uma pull request cuja branch de origem também se
+    # chame main, como a de um fork.
+    if: >-
+      vars.DEPLOY_ENABLED == 'true' &&
+      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'))
+    runs-on: ubuntu-latest
+    # O commit a publicar e se ele ainda é o topo da main. Os jobs seguintes leem daqui.
+    outputs:
+      sha: ${{ steps.tip.outputs.sha }}
+      current: ${{ steps.tip.outputs.current }}
+    steps:
+      # Compara o commit com o topo atual da main pela API do GitHub. Fora do topo, o job
+      # termina verde com um aviso e os ambientes ficam de fora.
+      - name: Conferir que o commit é o topo da main
+        id: tip
+        env:
+          # O token do próprio workflow basta para o `gh api` ler o repositório.
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          # O commit que a CI testou; num disparo manual, o commit da main.
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          # O disparo manual não passa pelo workflow_run: confere aqui que a CI já passou
+          # neste commit, para não publicar código que nenhum teste viu.
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            green="$(gh api "repos/${REPO}/actions/workflows/ci.yml/runs?head_sha=${SHA}&status=success&per_page=1" --jq .total_count)"
+            if [ "$green" = "0" ]; then
+              echo "::error::A CI ainda não passou no commit ${SHA}. O disparo manual só publica um commit testado."
+              exit 1
+            fi
+          fi
+          tip="$(gh api "repos/${REPO}/commits/main" --jq .sha)"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          if [ "$tip" = "$SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::A main já está em ${tip}. O deploy de ${SHA} fica de fora; o mais novo publica."
+          fi
+
+  # Publica o backend na Railway e o preview da Vercel no ambiente development, roda a fumaça
+  # e joga uma partida de cada jogo. Não pede aprovação.
+  development:
+    name: development
+    needs: gate
+    # Um commit que já não é o topo da main fica de fora: o deploy mais novo publica.
+    if: needs.gate.outputs.current == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Um grupo por ambiente: uma aprovação de produção pendente não segura o development.
+    # `cancel-in-progress: false` deixa o deploy em andamento terminar; o seguinte espera.
+    concurrency:
+      group: deploy-development
+      cancel-in-progress: false
+    # Os segredos e as variáveis deste job vêm do GitHub Environment development, que só
+    # aceita a main. A url aparece no resumo da execução.
+    environment:
+      name: development
+      url: https://${{ vars.WEB_HOST }}
+    env:
+      SHA: ${{ needs.gate.outputs.sha }}
+      API_URL: ${{ vars.API_URL }}
+      WEB_HOST: ${{ vars.WEB_HOST }}
+    steps:
+      # O commit que a CI testou, não o topo da main no momento do checkout. O histórico
+      # inteiro vem junto, para comparar com o commit que está no ar.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          fetch-depth: 0
+      # Node 24, a versão do projeto na Vercel, com o cache do npm do frontend.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # Sem estas variáveis, os passos seguintes falhariam com mensagens que não dizem o motivo.
+      - name: Conferir as variáveis do ambiente
+        env:
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          missing=""
+          case "$API_URL" in https://*) ;; *) missing="$missing API_URL(https://...)" ;; esac
+          case "$API_URL" in */) missing="$missing API_URL(sem barra no fim)" ;; esac
+          case "$WEB_HOST" in ""|*/*) missing="$missing WEB_HOST(só o host)" ;; esac
+          [ -n "$VERCEL_ORG_ID" ] || missing="$missing VERCEL_ORG_ID"
+          [ -n "$VERCEL_PROJECT_ID" ] || missing="$missing VERCEL_PROJECT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::Variáveis do Environment development ausentes ou inválidas:${missing}. Veja docs/CONFIGURAR-PIPELINE.md."
+            exit 1
+          fi
+      # As CLIs nas versões fixas do `env` do topo.
+      - name: Instalar as CLIs da Railway e da Vercel
+        run: npm install --global "@railway/cli@${RAILWAY_CLI_VERSION}" "vercel@${VERCEL_CLI_VERSION}"
+      # A Railway reinicia o servidor a cada deploy, e as salas vivem na memória dele. Por isso
+      # o backend só sobe quando `backend/`, `shared/` ou o `.dockerignore` mudaram desde o
+      # commit que está no ar, lido do /health. Sem resposta, ou com um commit que o
+      # repositório não conhece, o deploy acontece.
+      - name: Decidir se o backend precisa de deploy
+        id: backend
+        run: |
+          live="$(curl -fsS --max-time 20 "${API_URL}/health" | jq -r '.build // empty' || true)"
+          if [ -n "$live" ] && git cat-file -e "${live}^{commit}" 2>/dev/null &&
+             git diff --quiet "$live" "$SHA" -- backend shared .dockerignore; then
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "build=${live}" >> "$GITHUB_OUTPUT"
+            echo "::notice::Backend de development sem mudança desde ${live}: o deploy da Railway fica de fora e as salas continuam no ar."
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            echo "build=${SHA}" >> "$GITHUB_OUTPUT"
+          fi
+      # O /health devolve este commit, e a fumaça espera por ele. O arquivo não entra no
+      # .gitignore de propósito: o `railway up` não envia o que o .gitignore cobre.
+      - name: Gravar o commit no backend
+        if: steps.backend.outputs.deploy == 'true'
+        run: printf '%s' "$SHA" > backend/src/BUILD_SHA
+      # Envia o repositório a partir da raiz. A Railway constrói o backend/Dockerfile com a
+      # configuração gravada no serviço: Root Directory `/`, RAILWAY_DOCKERFILE_PATH e health
+      # check em /health. `--ci` mostra o log do build e termina quando ele acaba; se o build
+      # falha, o passo falha. Se a versão nova não passa no health check, a anterior continua
+      # no ar, e a fumaça, que espera o commit no /health, falha. O token do projeto, limitado
+      # ao ambiente `dev` da Railway, só existe neste passo.
+      - name: Deploy do backend em development
+        if: steps.backend.outputs.deploy == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --ci --service "$RAILWAY_SERVICE" --environment dev
+      # As dependências do frontend: o teste do jogo, no fim, usa o socket.io-client daqui.
+      - name: Instalar o frontend
+        working-directory: frontend
+        run: npm ci
+      # `vercel pull` baixa a configuração do projeto, `vercel build` gera o build com o backend
+      # de development no VITE_SOCKET_URL e `vercel deploy --prebuilt` envia o build pronto.
+      # Depois, a API REST da Vercel liga a implantação ao alias WEB_HOST, porque a URL de cada
+      # preview muda e o backend de development só aceita a origem do ALLOWED_ORIGINS.
+      - name: Build e deploy de preview na Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          # A variável do ambiente do job vence a que o `vercel pull` baixa da Vercel: o
+          # endereço do backend de cada ambiente fica num lugar só, o API_URL do Environment.
+          VITE_SOCKET_URL: ${{ vars.API_URL }}
+        run: |
+          vercel pull --yes --environment=preview
+          vercel build
+          url="$(vercel deploy --prebuilt)"
+          echo "Preview: $url"
+          # O alias vai pela API REST, com o time explícito: o `vercel alias set` procura o
+          # usuário dono do token, e um token de time não tem usuário.
+          deployment="https://api.vercel.com/v13/deployments/${url#https://}?teamId=${VERCEL_ORG_ID}"
+          id="$(curl -sS --fail-with-body -H "Authorization: Bearer ${VERCEL_TOKEN}" "$deployment" | jq -r .id)"
+          curl -sS --fail-with-body -o /dev/null -X POST \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" -H "Content-Type: application/json" \
+            -d "{\"alias\":\"${WEB_HOST}\"}" \
+            "https://api.vercel.com/v2/deployments/${id}/aliases?teamId=${VERCEL_ORG_ID}"
+          echo "Alias: https://${WEB_HOST} -> ${id}"
+      # Espera o /health devolver o commit e confere o CORS, a página e o endereço do backend
+      # dentro do build (.github/scripts/smoke.mjs).
+      - name: Testes de fumaça em development
+        env:
+          BUILD: ${{ steps.backend.outputs.build }}
+          # Opcional: abre o frontend que está atrás do login da Vercel.
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node .github/scripts/smoke.mjs "https://${WEB_HOST}" "$API_URL" "$BUILD"
+      # O mesmo teste da CI, agora contra o backend publicado: Spyfall e Quem sou eu até o
+      # fim, por WebSocket. As salas do teste são apagadas no fim.
+      - name: Partida completa nos dois jogos em development
+        run: node frontend/roda-game-test.mjs "$API_URL"
+
+  # O mesmo deploy em production, depois da aprovação.
+  production:
+    name: production
+    # Só depois do development. Sem função de status no `if`, o GitHub exige também que gate e
+    # development tenham terminado verdes.
+    needs: [gate, development]
+    if: needs.gate.outputs.current == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    # O GitHub Environment production tem o dono do repositório como revisor obrigatório e só
+    # aceita a main. O job espera a aprovação antes do primeiro passo.
+    environment:
+      name: production
+      url: https://${{ vars.WEB_HOST }}
+    env:
+      SHA: ${{ needs.gate.outputs.sha }}
+      API_URL: ${{ vars.API_URL }}
+      WEB_HOST: ${{ vars.WEB_HOST }}
+    steps:
+      # A aprovação pode levar dias: se a main andou, o deploy mais novo é que publica.
+      - name: Conferir de novo o topo da main
+        id: tip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          tip="$(gh api "repos/${REPO}/commits/main" --jq .sha)"
+          if [ "$tip" = "$SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::A main já está em ${tip}. Aprove o deploy mais novo."
+          fi
+      # Daqui em diante, cada passo só roda se o commit ainda for o topo. Se não for, o job
+      # termina verde sem publicar nada, com o aviso acima.
+      - uses: actions/checkout@v7
+        if: steps.tip.outputs.current == 'true'
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        if: steps.tip.outputs.current == 'true'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Conferir as variáveis do ambiente
+        if: steps.tip.outputs.current == 'true'
+        env:
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          missing=""
+          case "$API_URL" in https://*) ;; *) missing="$missing API_URL(https://...)" ;; esac
+          case "$API_URL" in */) missing="$missing API_URL(sem barra no fim)" ;; esac
+          case "$WEB_HOST" in ""|*/*) missing="$missing WEB_HOST(só o host)" ;; esac
+          [ -n "$VERCEL_ORG_ID" ] || missing="$missing VERCEL_ORG_ID"
+          [ -n "$VERCEL_PROJECT_ID" ] || missing="$missing VERCEL_PROJECT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::Variáveis do Environment production ausentes ou inválidas:${missing}. Veja docs/CONFIGURAR-PIPELINE.md."
+            exit 1
+          fi
+      - name: Instalar as CLIs da Railway e da Vercel
+        if: steps.tip.outputs.current == 'true'
+        run: npm install --global "@railway/cli@${RAILWAY_CLI_VERSION}" "vercel@${VERCEL_CLI_VERSION}"
+      # Como em development. Em produção é isto que protege quem está jogando: uma mudança só
+      # de frontend não reinicia o servidor nem apaga as salas abertas.
+      - name: Decidir se o backend precisa de deploy
+        if: steps.tip.outputs.current == 'true'
+        id: backend
+        run: |
+          live="$(curl -fsS --max-time 20 "${API_URL}/health" | jq -r '.build // empty' || true)"
+          if [ -n "$live" ] && git cat-file -e "${live}^{commit}" 2>/dev/null &&
+             git diff --quiet "$live" "$SHA" -- backend shared .dockerignore; then
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "build=${live}" >> "$GITHUB_OUTPUT"
+            echo "::notice::Backend de production sem mudança desde ${live}: o deploy da Railway fica de fora e as salas continuam no ar."
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            echo "build=${SHA}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Gravar o commit no backend
+        if: steps.tip.outputs.current == 'true' && steps.backend.outputs.deploy == 'true'
+        run: printf '%s' "$SHA" > backend/src/BUILD_SHA
+      # Como em development, com o token do ambiente `production` da Railway. O deploy reinicia
+      # o servidor: as partidas em andamento caem. Aprove num horário sem gente jogando.
+      - name: Deploy do backend em production
+        if: steps.tip.outputs.current == 'true' && steps.backend.outputs.deploy == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --ci --service "$RAILWAY_SERVICE" --environment production
+      - name: Instalar o frontend
+        if: steps.tip.outputs.current == 'true'
+        working-directory: frontend
+        run: npm ci
+      # `--prod` em todos os comandos: variáveis de Production, build de produção e o domínio
+      # de produção na implantação nova.
+      - name: Build e deploy de produção na Vercel
+        if: steps.tip.outputs.current == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          VITE_SOCKET_URL: ${{ vars.API_URL }}
+        run: |
+          vercel pull --yes --environment=production
+          vercel build --prod
+          vercel deploy --prebuilt --prod
+      # A mesma fumaça de development. Se ela falhar, o job fica vermelho e nada volta
+      # sozinho: o rollback é manual, pelos painéis da Railway e da Vercel.
+      - name: Testes de fumaça em production
+        if: steps.tip.outputs.current == 'true'
+        env:
+          BUILD: ${{ steps.backend.outputs.build }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node .github/scripts/smoke.mjs "https://${WEB_HOST}" "$API_URL" "$BUILD"
+      - name: Partida completa nos dois jogos em production
+        if: steps.tip.outputs.current == 'true'
+        run: node frontend/roda-game-test.mjs "$API_URL"

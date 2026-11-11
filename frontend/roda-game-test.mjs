@@ -75,10 +75,6 @@ try {
   results.push(['spyfall end has spyNames', Array.isArray(ended.spyNames)]);
   results.push(['spyfall end gameType', ended.gameType === 'spyfall']);
 
-  a.disconnect();
-  b.disconnect();
-  c.disconnect();
-
   // --- Quem sou eu ---
   const d = await connect('d');
   const e = await connect('e');
@@ -120,12 +116,31 @@ try {
   const [guessResult] = await guessSync;
   results.push(['quem correct guess', guessResult.correct === true]);
 
-  d.disconnect();
-  e.disconnect();
-
   const spyRooms = await fetch(`${URL}/api/rooms?gameType=spyfall`).then(r => r.json());
   const quemRooms = await fetch(`${URL}/api/rooms?gameType=quem-sou-eu`).then(r => r.json());
   results.push(['rooms filtered by game', spyRooms.every(r => r.gameType === 'spyfall') && quemRooms.every(r => r.gameType === 'quem-sou-eu')]);
+
+  // Sai das salas antes de desconectar: o servidor apaga a sala vazia na hora, em vez de
+  // deixá-la 90 s na lista pública. Importa quando o teste roda contra um ambiente publicado.
+  // Só desconecta depois de a sala sumir: um disconnect logo após o emit chega antes do
+  // leave-room, e o servidor trata como queda de conexão.
+  for (const [socket, roomCode] of [
+    [a, spyfall.roomCode], [b, spyfall.roomCode], [c, spyfall.roomCode],
+    [d, quem.roomCode], [e, quem.roomCode]
+  ]) {
+    socket.emit('leave-room', { roomCode });
+  }
+
+  const testCodes = [spyfall.roomCode, quem.roomCode];
+  let leftover = testCodes;
+  for (let attempt = 0; attempt < 20 && leftover.length > 0; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const all = await fetch(`${URL}/api/rooms`).then(r => r.json());
+    leftover = testCodes.filter(code => all.some(r => r.code === code));
+  }
+  results.push(['test rooms removed after leave', leftover.length === 0]);
+
+  [a, b, c, d, e].forEach(socket => socket.disconnect());
 
 } catch (err) {
   console.error('TEST ERROR', err);
