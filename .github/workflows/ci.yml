@@ -1,0 +1,85 @@
+# CI da Roda. Roda em toda pull request e em todo push na `main`.
+#
+# Dois jobs sem dependência entre si, em paralelo:
+#   web  ESLint e build do frontend.
+#   e2e  Constrói as imagens de produção (a do backend é a mesma da Railway), sobe o ambiente
+#        com o docker compose e joga uma partida inteira de cada jogo contra ele.
+# Nenhum job lê segredo.
+#
+# O `deploy.yml` escuta este workflow pelo nome `ci`, em `workflow_run`, e publica quando ele
+# termina verde num push para a `main`. Renomear o `name` abaixo desliga o deploy.
+name: ci
+
+on:
+  # Toda pull request, para conferir a mudança antes do merge.
+  pull_request:
+  # Todo push na `main`, inclusive o merge de uma PR. É este resultado que libera o deploy.
+  push:
+    branches:
+      - main
+
+# O token do GitHub só lê o repositório.
+permissions:
+  contents: read
+
+# Numa pull request, um push novo cancela a execução anterior da mesma branch. Na `main` nada é
+# cancelado: cada commit termina a própria CI, que é o que o deploy escuta.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Estáticos e build do frontend (React + Vite).
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      # Node 24, a versão do projeto na Vercel, com o cache do npm chaveado pelo lockfile.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # `npm ci` instala exatamente o `package-lock.json` e falha se ele estiver fora de sincronia.
+      - name: Instalar dependências
+        working-directory: frontend
+        run: npm ci
+      # Erro falha o job; aviso não. Os avisos de hoje são dívida conhecida (eslint.config.js).
+      - name: ESLint
+        working-directory: frontend
+        run: npm run lint
+      # `vite build`, o mesmo comando que a Vercel roda. Pega import quebrado, inclusive de `shared/`.
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  # Ponta a ponta contra as imagens de produção. Foi um erro de empacotamento, o backend sem a
+  # pasta `shared/`, que deixou a produção fora do ar entre setembro e novembro de 2026: este
+  # job sobe a mesma imagem que a Railway constrói antes de qualquer deploy.
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      # Constrói `backend/Dockerfile` e `frontend/Dockerfile` (nginx com o build do Vite) e espera
+      # o healthcheck do backend, em /health. O `npm ci` de cada imagem confere os lockfiles.
+      - name: Construir as imagens e subir o ambiente
+        run: docker compose up --build --detach --wait --wait-timeout 180
+      # `frontend/roda-game-test.mjs` contra o backend do compose: cria sala, entra com os
+      # jogadores e joga Spyfall e Quem sou eu até o fim, pelo Socket.io.
+      - name: Partida completa nos dois jogos
+        run: docker compose --profile test run --rm smoke
+      # O caminho do navegador: a página, a API e o handshake do Socket.io pelo nginx, em :8080.
+      - name: Frontend e proxy do nginx
+        run: |
+          curl -fsS http://localhost:8080/ | grep -q 'id="root"'
+          curl -fsS http://localhost:8080/api/rooms | jq -e 'type == "array"' > /dev/null
+          curl -fsS 'http://localhost:8080/socket.io/?EIO=4&transport=polling' | grep -q '"sid"'
+          echo "A página, /api/rooms e o handshake do Socket.io respondem pelo nginx."
+      # Só quando um passo anterior falhou: o log dos containers aparece na execução.
+      - name: Logs dos containers
+        if: failure()
+        run: docker compose logs --no-color

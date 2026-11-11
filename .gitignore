@@ -1,2 +1,5 @@
 .env
 node_modules/
+
+# Criada pela CLI da Vercel (vercel pull / vercel build)
+.vercel

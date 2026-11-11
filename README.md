@@ -203,6 +203,11 @@ Para testar no celular, adicione o IP da sua máquina nas origens permitidas:
 
 ## 🚀 Deploy
 
+A publicação é feita pelo GitHub Actions: a CI testa cada push na `main`, o deploy publica no ambiente de
+dev e, depois de uma aprovação, em produção. Veja [`.github/workflows/README.md`](.github/workflows/README.md)
+e o passo a passo em [`docs/CONFIGURAR-PIPELINE.md`](docs/CONFIGURAR-PIPELINE.md). As seções abaixo descrevem
+a configuração de cada serviço; com a pipeline ligada, o deploy automático da Railway e da Vercel fica desligado.
+
 ### Backend (Railway)
 
 O backend importa `shared/` (fora da pasta `backend/`), então o serviço precisa ser buildado a partir da

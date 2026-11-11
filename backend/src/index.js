@@ -1,4 +1,5 @@
 import express from 'express';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
@@ -348,9 +349,22 @@ app.get('/', (req, res) => {
   });
 });
 
+// Commit que está no ar. O deploy.yml grava o SHA em backend/src/BUILD_SHA antes do
+// `railway up`, e os testes de fumaça esperam o /health devolver esse commit. Fora da
+// pipeline o arquivo não existe: vale o commit que a Railway informa, ou null.
+function readBuildSha() {
+  try {
+    return readFileSync(new URL('./BUILD_SHA', import.meta.url), 'utf8').trim() || null;
+  } catch {
+    return process.env.RAILWAY_GIT_COMMIT_SHA || null;
+  }
+}
+
+const buildSha = readBuildSha();
+
 // Healthcheck (Docker e Railway): só responde se o processo subiu de verdade.
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', uptime: Math.round(process.uptime()) });
+  res.json({ status: 'ok', build: buildSha, uptime: Math.round(process.uptime()) });
 });
 
 io.on('connection', (socket) => {
