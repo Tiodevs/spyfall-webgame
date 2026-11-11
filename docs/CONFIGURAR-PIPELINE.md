@@ -106,7 +106,11 @@ Não são segredos, mas a CLI precisa deles para saber em que projeto publicar.
 ### 2.3 O que não mexer
 
 - O domínio `jogos.mefelipe.com.br` continua ligado à branch `dev` em **Settings → Domains**. É essa ligação que o mantém fora da produção. A pipeline aponta o domínio para cada implantação de development pela API da Vercel.
-- A proteção de deployments (**Deployment Protection**) pode continuar ligada: ela não vale para domínio próprio, e os dois ambientes usam domínio próprio.
+- A proteção de deployments (**Deployment Protection**) não vale para o domínio de produção, mas **vale** para `jogos.mefelipe.com.br`, porque ele aponta para implantações de preview: quem não está logado na Vercel cai na tela de login. Para a fumaça de development conseguir abrir a página, crie o segredo de bypass:
+  1. Projeto `spyfall-webgame` → **Settings** → **Deployment Protection** → **Protection Bypass for Automation** → **Add Secret** (ou **Create**). Copie o valor.
+  2. No GitHub, grave nos dois Environments: `gh secret set VERCEL_AUTOMATION_BYPASS_SECRET --env development` e o mesmo com `--env production`.
+
+  A alternativa é desligar a **Vercel Authentication** na mesma tela, deixando o dev público.
 - A variável `VITE_SOCKET_URL` da Vercel deixa de ser a fonte do endereço do backend: a pipeline passa o `API_URL` do GitHub no build, e ele vence o valor da Vercel. Pode deixar como está.
 
 O deploy automático da Vercel é desligado pelo arquivo [`frontend/vercel.json`](../frontend/vercel.json), que já está no repositório. Vale a partir do push que o levar para a `main`.

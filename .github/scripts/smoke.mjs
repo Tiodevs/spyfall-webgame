@@ -27,6 +27,11 @@ if (!originOnly.test(web) || !originOnly.test(api)) {
 
 // Prazo de cada pedido.
 const requestTimeoutMs = 20_000
+// Segredo do "Protection Bypass for Automation" da Vercel. Com ele, a fumaça abre um frontend
+// que está atrás do login da Vercel (Deployment Protection). Sem ele, os pedidos vão sem o
+// cabeçalho, como antes.
+const bypass = (process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? '').trim()
+const bypassHeaders = bypass ? { 'x-vercel-protection-bypass': bypass } : {}
 // As mensagens das verificações que falharam, contadas no resumo do fim.
 const failures = []
 
@@ -45,7 +50,14 @@ function check(condition, message) {
  * chegar como o 200 da página de destino.
  */
 function get(url, init = {}) {
-  return fetch(url, { redirect: 'manual', ...init, signal: AbortSignal.timeout(requestTimeoutMs) })
+  // O cabeçalho do bypass só vai para o frontend, nunca para o backend na Railway.
+  const headers = url.startsWith(web) ? { ...bypassHeaders, ...init.headers } : init.headers
+  return fetch(url, {
+    redirect: 'manual',
+    ...init,
+    headers,
+    signal: AbortSignal.timeout(requestTimeoutMs),
+  })
 }
 
 /** O corpo como JSON, ou `null` quando ele não é JSON, como uma página de erro. */
@@ -134,8 +146,8 @@ try {
 }
 
 // 4. O frontend está no ar e aponta para este backend.
-// Até 1 minuto para o domínio servir a implantação nova. Um 401 aqui costuma ser a proteção de
-// deployments da Vercel, que não vale para domínio próprio.
+// Até 1 minuto para o domínio servir a implantação nova. Um 302 para vercel.com/sso-api ou um
+// 401 aqui é a proteção de deployments da Vercel: falta o VERCEL_AUTOMATION_BYPASS_SECRET.
 const page = await waitFor(`${web}/`, { attempts: 6, delayMs: 10_000 })
 check(page instanceof Response && page.status === 200, `GET ${web}/ responde 200 (${describe(page)})`)
 if (page instanceof Response && page.status === 200) {

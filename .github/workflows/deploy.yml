@@ -216,6 +216,8 @@ jobs:
       - name: Testes de fumaça em development
         env:
           BUILD: ${{ steps.backend.outputs.build }}
+          # Opcional: abre o frontend que está atrás do login da Vercel.
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: node .github/scripts/smoke.mjs "https://${WEB_HOST}" "$API_URL" "$BUILD"
       # O mesmo teste da CI, agora contra o backend publicado: Spyfall e Quem sou eu até o
       # fim, por WebSocket. As salas do teste são apagadas no fim.
@@ -339,6 +341,7 @@ jobs:
         if: steps.tip.outputs.current == 'true'
         env:
           BUILD: ${{ steps.backend.outputs.build }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: node .github/scripts/smoke.mjs "https://${WEB_HOST}" "$API_URL" "$BUILD"
       - name: Partida completa nos dois jogos em production
         if: steps.tip.outputs.current == 'true'
